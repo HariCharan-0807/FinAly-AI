@@ -6,7 +6,7 @@
 
 const API = (
   document.querySelector('meta[name="api-url"]')?.getAttribute('content') ||
-  'https://3-deploy-backend-to-railway-production.up.railway.app'
+  'https://web-production-c2931.up.railway.app'
 ).replace(/\/$/, '');
 
 // ═══════════════════════════════════════════════════════════

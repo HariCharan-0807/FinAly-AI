@@ -113,6 +113,7 @@ async def add_security_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://web-production-c2931.up.railway.app",
         "https://3-deploy-backend-to-railway-production.up.railway.app",
         # VS Code Live Server
         "http://127.0.0.1:5500", "http://localhost:5500",
