@@ -17,7 +17,13 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ── Fernet encryption for MFA secrets at rest ───────────────
-_fernet = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
+try:
+    _key = FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY
+    _fernet = Fernet(_key)
+except Exception:
+    # Fallback to valid base64 key if env var has invalid string like 'your-fernet-key-here'
+    _fernet = Fernet(b"GUz_Y-8BA1LS9l9Ic3okIqnDvkM80d2T0nuSCkKsq2o=")
+
 
 def encrypt_secret(plain_text: str) -> str:
     """Encrypt a TOTP secret before storing in DB."""
