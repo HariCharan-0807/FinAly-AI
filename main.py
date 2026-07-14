@@ -96,7 +96,7 @@ async def add_security_headers(request: Request, call_next):
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; "
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data:; "
-        "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000;"
+        "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://*.railway.app https://*.vercel.app;"
     )
     return response
 
@@ -107,6 +107,7 @@ async def add_security_headers(request: Request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://3-deploy-backend-to-railway-production.up.railway.app",
         # VS Code Live Server
         "http://127.0.0.1:5500", "http://localhost:5500",
         # Common dev servers (Vite, CRA, ng serve, etc.)
@@ -118,6 +119,7 @@ app.add_middleware(
         # file:// protocol (null origin) — for direct file opening
         "null",
     ],
+    allow_origin_regex="https://.*\.railway\.app|https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
