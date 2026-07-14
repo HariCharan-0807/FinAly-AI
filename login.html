@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="FinAly AI \u2014 Secure login portal. AI-powered personal finance dashboard with MFA security.">
+  <meta name="api-url" id="meta-api-url" content="http://127.0.0.1:8000">
+  <title>FinAly AI \u2014 Secure Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="login.css?v=2.0">
+</head>
+<body>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast" role="alert" aria-live="polite"></div>
+
+  <div class="auth-wrapper">
+
+    <div class="auth-card">
+
+      <!-- Brand -->
+      <div class="brand-header">
+        <div class="brand-logo">
+          <span class="logo-icon">₹</span>
+          <h1>FinAly AI</h1>
+        </div>
+        <p class="brand-quote">Intelligent insights for a sharper financial future.</p>
+      </div>
+
+      <!-- ── LOGIN FORM ───────────────────────── -->
+      <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+        <h2>Welcome Back</h2>
+        <p class="form-subtitle">Sign in to your secure account</p>
+
+        <div class="input-group">
+          <label for="login-email">Email Address</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="email" id="login-email" placeholder="you@example.com"
+                   autocomplete="email" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="login-password">Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="password" id="login-password" placeholder="Your password"
+                   autocomplete="current-password" required>
+            <button type="button" class="toggle-pwd" onclick="togglePwd('login-password', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <button type="submit" id="login-btn" class="primary-btn">
+          <span class="btn-text">Sign In Securely</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+        <a href="#" class="toggle-link" onclick="toggleView('signup-form')">Need an account? Sign Up</a>
+      </form>
+
+      <!-- ── MFA FORM ─────────────────────────── -->
+      <form id="mfa-form" class="hidden" onsubmit="verifyMFA(event)" novalidate>
+        <div class="mfa-icon"></div>
+        <h2>Two-Factor Auth</h2>
+        <p class="form-subtitle">Enter the 6-digit code from your Authenticator app.</p>
+
+        <div class="input-group otp-group">
+          <input type="text" id="mfa-code" placeholder="000000"
+                 maxlength="6" pattern="\d{6}" inputmode="numeric"
+                 autocomplete="one-time-code" required>
+        </div>
+
+        <button type="submit" id="mfa-btn" class="primary-btn">
+          <span class="btn-text">Verify & Enter Dashboard</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+        <a href="#" class="toggle-link" onclick="toggleView('login-form')">← Back to Login</a>
+      </form>
+
+      <!-- ── MFA SETUP MODAL ────────────────────── -->
+      <div id="mfa-setup-form" class="hidden">
+        <div class="mfa-icon"></div>
+        <h2>Set Up Two-Factor Auth</h2>
+        <p class="form-subtitle">Scan this QR code with your authenticator app, then enter the 6-digit code below to activate MFA.</p>
+        <div id="qr-container" class="qr-container"></div>
+        <p class="secret-label">Manual key: <code id="totp-secret-display"></code></p>
+
+        <!-- Step-by-step instructions -->
+        <div class="mfa-steps">
+          <div class="mfa-steps-title">How to set up</div>
+          <div class="mfa-step">
+            <span class="mfa-step-num">1</span>
+            <span class="mfa-step-text">Download <strong>Authenticator+</strong> (or Google Authenticator / Authy) from the App Store or Play Store.</span>
+          </div>
+          <div class="mfa-step">
+            <span class="mfa-step-num">2</span>
+            <span class="mfa-step-text">Open the app, tap <strong>"+"</strong> or <strong>"Add Account"</strong>, then <strong>scan the QR code</strong> shown above.</span>
+          </div>
+          <div class="mfa-step">
+            <span class="mfa-step-num">3</span>
+            <span class="mfa-step-text">The app will generate a <strong>6-digit OTP</strong>. Enter it below to complete setup and log in.</span>
+          </div>
+        </div>
+
+        <form onsubmit="confirmMFASetup(event)" novalidate>
+          <div class="input-group otp-group">
+            <input type="text" id="setup-mfa-code" placeholder="Enter 6-digit code"
+                   maxlength="6" pattern="\d{6}" inputmode="numeric" required>
+          </div>
+          <button type="submit" id="setup-mfa-btn" class="primary-btn">
+            <span class="btn-text">Activate MFA</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+        </form>
+      </div>
+
+      <!-- ── SIGN UP FORM ─────────────────────── -->
+      <form id="signup-form" class="hidden" onsubmit="handleSignup(event)" novalidate>
+        <h2>Create Account</h2>
+        <p class="form-subtitle">Start your financial journey today.</p>
+
+        <div class="input-group">
+          <label for="signup-name">Full Name</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="text" id="signup-name" placeholder="Hari Kumar"
+                   autocomplete="name" required minlength="2" maxlength="100">
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="signup-email">Email Address</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="email" id="signup-email" placeholder="you@example.com"
+                   autocomplete="email" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="signup-dob">Date of Birth <span class="label-note">(Must be 18+)</span></label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="date" id="signup-dob" autocomplete="bday" required>
+          </div>
+        </div>
+
+        <div class="input-group">
+          <label for="signup-password">Create Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="password" id="signup-password" placeholder="Strong password"
+                   autocomplete="new-password" required oninput="updateStrengthMeter(this.value)">
+            <button type="button" class="toggle-pwd" onclick="togglePwd('signup-password', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="strength-meter" aria-label="Password strength">
+            <div class="strength-bar" id="strength-bar"></div>
+          </div>
+          <p class="strength-label" id="strength-label"></p>
+        </div>
+
+        <div class="input-group">
+          <label for="signup-confirm">Confirm Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="password" id="signup-confirm" placeholder="Repeat password"
+                   autocomplete="new-password" required>
+          </div>
+        </div>
+
+        <button type="submit" id="signup-btn" class="primary-btn">
+          <span class="btn-text">Create My Account</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+        <a href="#" class="toggle-link" onclick="toggleView('login-form')">Already have an account? Log In</a>
+      </form>
+
+    </div>
+
+    <p class="footer-text">Protected by 256-bit AES encryption & TOTP MFA</p>
+  </div>
+
+  <script src="auth.js?v=2.4" defer></script>
+</body>
+</html>

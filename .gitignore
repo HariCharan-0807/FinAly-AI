@@ -1,0 +1,22 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment & secrets
+.env
+*.env
+
+# Local database & logs
+*.db
+.finaly_ai.db
+*.log
+
+# Large media & unrelated files
+
+*.mov
+*.mp4
+*.pdf
+
+# IDE
+.DS_Store

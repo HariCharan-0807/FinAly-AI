@@ -1,0 +1,12 @@
+{
+  "liveServer.settings.ignoreFiles": [
+    ".vscode/**",
+    "**/*.db",
+    "**/*.sqlite",
+    "**/*.log",
+    "**/*.db-journal",
+    "**/*.db-wal",
+    "**/__pycache__/**"
+  ],
+  "livePreview.defaultPreviewPath": "/index.html"
+}

@@ -1,0 +1,34 @@
+# FinAly AI — Python Backend Dependencies
+# Install with: pip install -r requirements.txt
+
+# ── Web Framework ──────────────────────────────────────────
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+# ── Database ───────────────────────────────────────────────
+sqlalchemy>=2.0.30
+
+# ── Auth & Security ────────────────────────────────────────
+bcrypt>=4.0.0
+pyjwt>=2.8.0
+cryptography>=42.0.0
+pyotp>=2.9.0
+qrcode[pil]>=7.4.2
+
+# ── Rate Limiting ──────────────────────────────────────────
+slowapi>=0.1.9
+
+# ── Data Validation ────────────────────────────────────────
+pydantic[email]>=2.7.0
+email-validator>=2.1.0
+
+# ── Config ────────────────────────────────────────────────
+python-dotenv>=1.0.1
+
+# ── PDF Parsing (Bank Statement Import) ───────────────────
+pdfplumber>=0.11.0
+
+# ── Export Engine ──────────────────────────────────────────
+openpyxl>=3.1.2
+reportlab>=4.1.0
