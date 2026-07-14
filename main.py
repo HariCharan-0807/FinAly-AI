@@ -119,7 +119,7 @@ app.add_middleware(
         # file:// protocol (null origin) — for direct file opening
         "null",
     ],
-    allow_origin_regex="https://.*\.railway\.app|https://.*\.vercel\.app",
+    allow_origin_regex=r"https://.*\.railway\.app|https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
@@ -1567,3 +1567,9 @@ async def serve_index_direct():
 
 # Mount the current folder for static assets (.js, .css, images, etc.)
 app.mount("/", StaticFiles(directory=_BASE_DIR), name="static")
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8080))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

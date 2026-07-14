@@ -13,4 +13,4 @@
 # 4. Update the API URL in index.html <meta name="api-url"> tag.
 
 # ── Railway Procfile (rename to Procfile, no extension) ───
-web: uvicorn main:app --host 0.0.0.0 --port $PORT
+web: python main.py
