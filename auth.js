@@ -163,7 +163,7 @@ function renderQrCode(uri, secret, qrBase64 = null) {
         style="display:block;border-radius:6px;"
         onerror="this.style.display='none';document.getElementById('qr-fallback').style.display='block';"
       >
-    </div>`;
+    </div>
     <p id="qr-fallback" style="display:none;color:#f97316;font-size:13px;margin-top:10px;">
       ️ Image failed to load. Use the manual key below.
     </p>`;
