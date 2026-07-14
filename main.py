@@ -41,7 +41,10 @@ from config import MAX_LOGIN_ATTEMPTS, LOCKOUT_MINUTES
 # ═══════════════════════════════════════════════════════════
 #  Bootstrap + DB Migrations
 # ═══════════════════════════════════════════════════════════
-models.Base.metadata.create_all(bind=engine)
+try:
+    models.Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"[Startup] Notice creating tables: {e}")
 
 
 def _run_db_migrations() -> None:
@@ -54,13 +57,16 @@ def _run_db_migrations() -> None:
         "ALTER TABLE transactions ADD COLUMN import_source VARCHAR(20) DEFAULT 'manual'",
         "ALTER TABLE transactions ADD COLUMN import_hash  VARCHAR(64)",
     ]
-    with engine.connect() as conn:
-        for stmt in migrations:
-            try:
-                conn.execute(_sql_text(stmt))
-                conn.commit()
-            except Exception:
-                pass  # Column already exists — safe to ignore
+    try:
+        with engine.connect() as conn:
+            for stmt in migrations:
+                try:
+                    conn.execute(_sql_text(stmt))
+                    conn.commit()
+                except Exception:
+                    pass  # Column already exists — safe to ignore
+    except Exception as e:
+        print(f"[Startup] Notice running migrations: {e}")
 
 
 _run_db_migrations()
