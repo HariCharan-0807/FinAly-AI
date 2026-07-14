@@ -101,7 +101,7 @@ async def add_security_headers(request: Request, call_next):
         "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; "
         "font-src 'self' https://fonts.gstatic.com; "
-        "img-src 'self' data:; "
+        "img-src 'self' data: https://api.qrserver.com; "
         "connect-src 'self' http://127.0.0.1:8000 http://localhost:8000 https://*.railway.app https://*.vercel.app;"
     )
     return response
@@ -265,7 +265,8 @@ def mfa_setup(
         db.commit()
 
     uri = get_totp_uri(secret, current_user.email)
-    return {"totp_uri": uri, "secret": secret}
+    qr_b64 = get_totp_qr_base64(uri)
+    return {"totp_uri": uri, "secret": secret, "qr_base64": f"data:image/png;base64,{qr_b64}"}
 
 
 # ═══════════════════════════════════════════════════════════

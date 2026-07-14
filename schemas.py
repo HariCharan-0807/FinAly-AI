@@ -80,6 +80,7 @@ class RefreshRequest(BaseModel):
 class MFASetupResponse(BaseModel):
     totp_uri: str          # otpauth:// URI for QR code
     secret: str            # plaintext secret (shown once, never stored raw)
+    qr_base64: Optional[str] = None  # base64 encoded PNG QR code
 
 
 class MFAVerifyRequest(BaseModel):
