@@ -85,6 +85,23 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
+# ── Public health check (no auth needed) ───────────────────
+@app.get("/api/healthz")
+def health_check(db: Session = Depends(get_db)):
+    from ml_engine import run_classical_ml_analytics
+    try:
+        # Get first user's ML data for quick sanity check
+        first_user = db.query(models.User).first()
+        if first_user:
+            ml = run_classical_ml_analytics(db, first_user.id)
+        else:
+            ml = {"model_status": "no_users_yet"}
+    except Exception as e:
+        ml = {"error": str(e)}
+    return {"status": "ok", "ml": ml}
+
+
+
 # ═══════════════════════════════════════════════════════════
 #  Security Headers Middleware
 # ═══════════════════════════════════════════════════════════
