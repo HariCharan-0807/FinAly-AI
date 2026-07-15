@@ -295,30 +295,42 @@ async function loadDashboardSummary() {
       }
     }
 
-    // ── Fetch ML Insights ──
-    loadMLInsights();
-
   } catch (e) {
-    // Offline — show placeholder state
+    console.error('Dashboard summary failed:', e);
   }
 }
 
 async function loadMLInsights() {
+  const spendEl = document.getElementById('ml-predicted-spend');
+  const anomEl  = document.getElementById('ml-anomaly-list');
+
   try {
     const res = await authFetch(`${API}/api/ml/insights`, {
       headers: { ...authHeader(), 'Content-Type': 'application/json' },
     });
-    if (!res.ok) return;
-    const data = await res.json();
-    const spendEl = document.getElementById('ml-predicted-spend');
-    const metaEl  = document.getElementById('ml-model-meta');
-    const anomEl  = document.getElementById('ml-anomaly-list');
 
+    // Handle non-OK responses
+    if (!res.ok) {
+      if (spendEl) spendEl.innerHTML = '<span style="color:#ef4444;font-size:13px;">⚠️ Could not load forecast. Please try again.</span>';
+      if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#ef4444;">⚠️ Could not scan transactions.</p>';
+      return;
+    }
+
+    const data = await res.json();
+
+    // ── Handle insufficient data state ──────────────────────────────
+    if (data.model_status === 'insufficient_data' || !data.forecast) {
+      if (spendEl) spendEl.innerHTML = '<span style="font-size:13px;color:#64748b;">➕ Add expense transactions to see your forecast.</span>';
+      if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#64748b;">Add at least 2 expense transactions to enable anomaly detection.</p>';
+      return;
+    }
+
+    // ── Render Expenditure Forecast ─────────────────────────────────
     if (data.forecast && spendEl) {
-      const estimated = (data.forecast.predicted_next_30d_expenses || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-      const actual    = (data.forecast.last_30d_actual || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-      const trend     = data.forecast.expenditure_trend || 'stable';
-      const trendIcon = trend === 'increasing' ? '📈 Trending up' : trend === 'decreasing' ? '📉 Trending down' : '➡️ Stable';
+      const estimated  = (data.forecast.predicted_next_30d_expenses || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const actual     = (data.forecast.last_30d_actual || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const trend      = data.forecast.expenditure_trend || 'stable';
+      const trendIcon  = trend === 'increasing' ? '📈 Trending up' : trend === 'decreasing' ? '📉 Trending down' : '➡️ Stable';
       const trendColor = trend === 'increasing' ? '#ef4444' : trend === 'decreasing' ? '#10b981' : '#f59e0b';
 
       spendEl.innerHTML = `
@@ -326,12 +338,13 @@ async function loadMLInsights() {
         <div style="font-size:11px;color:#64748b;margin-top:4px;">Last 30 days actual: <b>₹${actual}</b></div>
         <div style="font-size:11px;margin-top:3px;color:${trendColor};">${trendIcon}</div>`;
     }
+
+    // ── Render Anomaly Radar ────────────────────────────────────────
     if (anomEl) {
       if (data.anomalies && data.anomalies.length > 0) {
-        // Deduplicate: group entries with identical description, keep highest amount
         const seen = new Map();
         for (const a of data.anomalies) {
-          const key = a.description.trim().toLowerCase();
+          const key = (a.description || '').trim().toLowerCase();
           if (!seen.has(key)) {
             seen.set(key, { ...a, count: 1 });
           } else {
@@ -353,10 +366,14 @@ async function loadMLInsights() {
         anomEl.innerHTML = '<p style="font-size:13px; color:#10b981; margin-top:6px;">✅ No unusual spending activity detected.</p>';
       }
     }
+
   } catch (err) {
     console.error('ML fetch failed:', err);
+    if (spendEl) spendEl.innerHTML = '<span style="font-size:13px;color:#64748b;">⚠️ Forecast unavailable — check your connection.</span>';
+    if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#64748b;">⚠️ Anomaly scan unavailable.</p>';
   }
 }
+
 
 
 // ═══════════════════════════════════════════════════════════
@@ -1284,7 +1301,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNav();
   initExpenseChart();
   initCategoryChart();
+
+  // Run both independently so ML insights always load
   await loadDashboardSummary();
+  loadMLInsights();
 });
 
 
