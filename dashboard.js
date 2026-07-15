@@ -315,8 +315,16 @@ async function loadMLInsights() {
     const anomEl  = document.getElementById('ml-anomaly-list');
 
     if (data.forecast && spendEl) {
-      spendEl.textContent = '₹' + (data.forecast.predicted_next_30d_expenses || 0).toLocaleString('en-IN') + ' (Est.)';
-      // metaEl is already set in HTML; keep the friendly label as-is
+      const estimated = (data.forecast.predicted_next_30d_expenses || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const actual    = (data.forecast.last_30d_actual || 0).toLocaleString('en-IN', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+      const trend     = data.forecast.expenditure_trend || 'stable';
+      const trendIcon = trend === 'increasing' ? '📈 Trending up' : trend === 'decreasing' ? '📉 Trending down' : '➡️ Stable';
+      const trendColor = trend === 'increasing' ? '#ef4444' : trend === 'decreasing' ? '#10b981' : '#f59e0b';
+
+      spendEl.innerHTML = `
+        <span style="font-size:22px;font-weight:800;color:#4f46e5;">₹${estimated}</span>
+        <div style="font-size:11px;color:#64748b;margin-top:4px;">Last 30 days actual: <b>₹${actual}</b></div>
+        <div style="font-size:11px;margin-top:3px;color:${trendColor};">${trendIcon}</div>`;
     }
     if (anomEl) {
       if (data.anomalies && data.anomalies.length > 0) {
