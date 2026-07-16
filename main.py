@@ -107,7 +107,7 @@ def health_check(db: Session = Depends(get_db)):
             ml = {"model_status": "no_users_yet"}
     except Exception as e:
         ml = {"error": str(e)}
-    return {"status": "ok", "ml": ml}
+    return {"status": "ok", "smtp_enabled": __import__('config').SMTP_ENABLED, "smtp_from": __import__('config').SMTP_FROM or "NOT SET", "ml": ml}
 
 
 
