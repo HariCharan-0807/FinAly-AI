@@ -1,31 +1,66 @@
 """
-FinAly AI — Email Service (Resend API)
-Uses Resend HTTP API (HTTPS/443) instead of SMTP so it works on Railway's free tier.
-Railway blocks outbound SMTP ports (587/465), but HTTPS is always allowed.
-
-Sign up free at https://resend.com — 3,000 emails/month, no credit card needed.
+FinAly AI — Email Service (Brevo / Resend)
+Uses HTTPS APIs (port 443) so it works on Railway's free tier.
+Brevo = 300 emails/day free to ANY recipient. No domain needed.
 """
 import random
 import string
 import requests as _requests
 
-from config import RESEND_API_KEY, RESEND_FROM, RESEND_ENABLED
+from config import (
+    BREVO_API_KEY, BREVO_FROM, BREVO_ENABLED,
+    RESEND_API_KEY, RESEND_FROM, RESEND_ENABLED,
+    EMAIL_ENABLED,
+)
 
 
 def generate_otp(length: int = 6) -> str:
-    """Generate a 6-digit numeric OTP."""
     return ''.join(random.choices(string.digits, k=length))
 
 
 def _send(to_email: str, subject: str, html_body: str) -> bool:
-    """
-    Send an email via Resend API.
-    Returns True on success, False on failure.
-    """
-    if not RESEND_ENABLED:
-        print(f"[Email] Resend not configured — would have sent '{subject}' to {to_email}")
+    """Send email via Brevo (priority) or Resend. Returns True on success."""
+    if not EMAIL_ENABLED:
+        print(f"[Email] No email provider configured — skipping '{subject}' to {to_email}")
         return False
 
+    if BREVO_ENABLED:
+        return _send_brevo(to_email, subject, html_body)
+    else:
+        return _send_resend(to_email, subject, html_body)
+
+
+def _send_brevo(to_email: str, subject: str, html_body: str) -> bool:
+    """Send via Brevo (Sendinblue) HTTPS API."""
+    try:
+        resp = _requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "api-key": BREVO_API_KEY,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+            json={
+                "sender": {"name": "FinAly AI", "email": BREVO_FROM},
+                "to": [{"email": to_email}],
+                "subject": subject,
+                "htmlContent": html_body,
+            },
+            timeout=15,
+        )
+        if resp.status_code in (200, 201):
+            print(f"[Email/Brevo] ✅ Sent '{subject}' to {to_email}")
+            return True
+        else:
+            print(f"[Email/Brevo] ❌ Error {resp.status_code}: {resp.text}")
+            return False
+    except Exception as e:
+        print(f"[Email/Brevo] ❌ Request failed: {e}")
+        return False
+
+
+def _send_resend(to_email: str, subject: str, html_body: str) -> bool:
+    """Send via Resend HTTPS API (fallback)."""
     try:
         resp = _requests.post(
             "https://api.resend.com/emails",
@@ -42,21 +77,17 @@ def _send(to_email: str, subject: str, html_body: str) -> bool:
             timeout=15,
         )
         if resp.status_code in (200, 201):
-            print(f"[Email] Sent '{subject}' to {to_email}")
+            print(f"[Email/Resend] ✅ Sent '{subject}' to {to_email}")
             return True
         else:
-            print(f"[Email] Resend error {resp.status_code}: {resp.text}")
+            print(f"[Email/Resend] ❌ Error {resp.status_code}: {resp.text}")
             return False
     except Exception as e:
-        print(f"[Email] Request failed: {e}")
+        print(f"[Email/Resend] ❌ Request failed: {e}")
         return False
 
 
 def send_otp_email(to_email: str, otp: str, purpose: str = "verification") -> bool:
-    """
-    Send a 6-digit OTP email.
-    purpose: 'verification' | 'password_reset'
-    """
     if purpose == "password_reset":
         subject = "FinAly AI — Password Reset Code"
         action  = "reset your password"
@@ -91,8 +122,6 @@ def send_otp_email(to_email: str, otp: str, purpose: str = "verification") -> bo
 
 
 def send_welcome_email(to_email: str, full_name: str) -> bool:
-    """Send a welcome email after successful email verification."""
-    subject    = "Welcome to FinAly AI! 🎉"
     first_name = full_name.split()[0] if full_name else "there"
     html = f"""
     <!DOCTYPE html>
@@ -104,7 +133,7 @@ def send_welcome_email(to_email: str, full_name: str) -> bool:
           <span style="font-size:36px;font-weight:800;color:#4f46e5;">₹ FinAly AI</span>
         </div>
         <h2 style="color:#f8fafc;margin:0 0 8px;">Welcome, {first_name}! 🎉</h2>
-        <p style="color:#94a3b8;margin:0 0 16px;">Your email is verified and your account is ready. Start tracking your finances smarter with AI.</p>
+        <p style="color:#94a3b8;margin:0 0 16px;">Your email is verified and your account is ready.</p>
         <ul style="color:#94a3b8;padding-left:20px;margin:0 0 24px;">
           <li style="margin-bottom:8px;">📊 Track expenses &amp; income</li>
           <li style="margin-bottom:8px;">🎯 Set savings goals &amp; budgets</li>
@@ -117,4 +146,4 @@ def send_welcome_email(to_email: str, full_name: str) -> bool:
     </body>
     </html>
     """
-    return _send(to_email, subject, html)
+    return _send(to_email, f"Welcome to FinAly AI! 🎉", html)

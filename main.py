@@ -115,19 +115,17 @@ def health_check(db: Session = Depends(get_db)):
 def smtp_test(to: str = ""):
     """Test Resend email API and return exact success/error."""
     import requests as req
-    from config import RESEND_API_KEY, RESEND_FROM, RESEND_ENABLED
+    from config import EMAIL_ENABLED, BREVO_ENABLED, BREVO_API_KEY, BREVO_FROM, RESEND_ENABLED
+    from email_service import send_otp_email
     if not to:
         to = "test@example.com"
-    if not RESEND_ENABLED:
-        return {"error": "RESEND_API_KEY not set in Railway Variables", "RESEND_FROM": RESEND_FROM}
+    if not EMAIL_ENABLED:
+        return {"error": "No email provider configured. Set BREVO_API_KEY in Railway Variables.",
+                "BREVO_ENABLED": BREVO_ENABLED, "RESEND_ENABLED": RESEND_ENABLED}
     try:
-        resp = req.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
-            json={"from": RESEND_FROM, "to": [to], "subject": "FinAly AI Test", "html": "<p>Email working! ✅</p>"},
-            timeout=15,
-        )
-        return {"status_code": resp.status_code, "response": resp.json(), "from": RESEND_FROM, "to": to}
+        sent = send_otp_email(to, "123456", purpose="verification")
+        return {"success": sent, "provider": "brevo" if BREVO_ENABLED else "resend",
+                "to": to, "BREVO_FROM": BREVO_FROM}
     except Exception as e:
         return {"error": str(e)}
 
@@ -226,7 +224,7 @@ def health():
 @limiter.limit("10/minute")
 def create_user(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     from email_service import send_otp_email, generate_otp
-    from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
+    from config import EMAIL_ENABLED, OTP_EXPIRE_MINUTES
     from datetime import timedelta
 
     if db.query(models.User).filter(models.User.email == user.email).first():
@@ -237,10 +235,10 @@ def create_user(request: Request, user: schemas.UserCreate, db: Session = Depend
         full_name=user.full_name,
         dob=user.dob,
         hashed_password=get_password_hash(user.password),
-        is_email_verified=not RESEND_ENABLED,  # auto-verify if no email configured
+        is_email_verified=not EMAIL_ENABLED,  # auto-verify if no email configured
     )
 
-    if RESEND_ENABLED:
+    if EMAIL_ENABLED:
         # Generate OTP and send verification email
         otp = generate_otp()
         new_user.email_otp_hash   = get_password_hash(otp)
@@ -311,10 +309,10 @@ def verify_email(request: Request, body: schemas.EmailVerifyRequest, db: Session
 @limiter.limit("5/minute")
 def forgot_password_init(request: Request, body: schemas.ForgotPasswordInitRequest, db: Session = Depends(get_db)):
     from email_service import send_otp_email, generate_otp
-    from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
+    from config import EMAIL_ENABLED, OTP_EXPIRE_MINUTES
     from datetime import timedelta
 
-    if not RESEND_ENABLED:
+    if not EMAIL_ENABLED:
         raise HTTPException(
             status_code=503,
             detail="Email service is not configured on this server. Please contact support."
@@ -430,8 +428,8 @@ def login(request: Request, credentials: schemas.UserLogin, db: Session = Depend
 
     # Block login if email not verified — resend OTP
     if not user.is_email_verified:
-        from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
-        if RESEND_ENABLED:
+        from config import EMAIL_ENABLED, OTP_EXPIRE_MINUTES
+        if EMAIL_ENABLED:
             from email_service import send_otp_email, generate_otp
             from datetime import timedelta
             otp = generate_otp()
