@@ -23,12 +23,21 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./.finaly_ai.db")
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
-# ── Email / SMTP ─────────────────────────────────────────────
+# ── Email — Resend API (HTTPS, works on Railway free tier) ───
+# Sign up free at https://resend.com — 3,000 emails/month
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+# Resend requires a verified sender. Use their free test address before adding your domain:
+#   "FinAly AI <onboarding@resend.dev>"  (can only send to your own Resend account email)
+# After adding a domain in Resend dashboard → use: "FinAly AI <noreply@yourdomain.com>"
+RESEND_FROM    = os.getenv("RESEND_FROM", "FinAly AI <onboarding@resend.dev>")
+RESEND_ENABLED = bool(RESEND_API_KEY)
+
+# Keep SMTP vars for backwards compat (not used anymore)
 SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
-SMTP_FROM     = os.getenv("SMTP_FROM_EMAIL", "")   # Set in Railway Variables
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")     # Gmail App Password
-SMTP_ENABLED  = bool(SMTP_FROM and SMTP_PASSWORD)  # Auto-detects if email is configured
+SMTP_FROM     = os.getenv("SMTP_FROM_EMAIL", "")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
+SMTP_ENABLED  = RESEND_ENABLED   # alias — always use Resend now
 
-OTP_EXPIRE_MINUTES    = 10   # Email OTPs expire in 10 minutes
-RESET_TOKEN_EXPIRE_MINUTES = 10  # Password reset tokens expire in 10 minutes
+OTP_EXPIRE_MINUTES         = 10
+RESET_TOKEN_EXPIRE_MINUTES = 10

@@ -110,31 +110,26 @@ def health_check(db: Session = Depends(get_db)):
     return {"status": "ok", "smtp_enabled": __import__('config').SMTP_ENABLED, "smtp_from": __import__('config').SMTP_FROM or "NOT SET", "ml": ml}
 
 
-# ── SMTP debug endpoint (remove after debugging) ─────────────
+# ── Email debug endpoint (remove after debugging) ────────────
 @app.get("/api/debug/smtp-test")
 def smtp_test(to: str = ""):
-    """Send a test email and return exact success/error. Remove after debugging."""
-    import smtplib
-    from config import SMTP_HOST, SMTP_PORT, SMTP_FROM, SMTP_PASSWORD, SMTP_ENABLED
+    """Test Resend email API and return exact success/error."""
+    import requests as req
+    from config import RESEND_API_KEY, RESEND_FROM, RESEND_ENABLED
     if not to:
-        to = SMTP_FROM  # send to self as test
-    if not SMTP_ENABLED:
-        return {"error": "SMTP not configured", "SMTP_FROM": SMTP_FROM, "SMTP_PASSWORD_SET": bool(SMTP_PASSWORD)}
+        to = "test@example.com"
+    if not RESEND_ENABLED:
+        return {"error": "RESEND_API_KEY not set in Railway Variables", "RESEND_FROM": RESEND_FROM}
     try:
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.login(SMTP_FROM, SMTP_PASSWORD)
-            server.sendmail(SMTP_FROM, to, f"Subject: FinAly AI SMTP Test\n\nSMTP is working!")
-        return {"success": True, "sent_to": to, "from": SMTP_FROM}
-    except smtplib.SMTPAuthenticationError as e:
-        return {"error": "AUTH_FAILED", "detail": str(e), "hint": "Check your App Password in Railway Variables"}
-    except smtplib.SMTPException as e:
-        return {"error": "SMTP_ERROR", "detail": str(e)}
+        resp = req.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}", "Content-Type": "application/json"},
+            json={"from": RESEND_FROM, "to": [to], "subject": "FinAly AI Test", "html": "<p>Email working! ✅</p>"},
+            timeout=15,
+        )
+        return {"status_code": resp.status_code, "response": resp.json(), "from": RESEND_FROM, "to": to}
     except Exception as e:
-        return {"error": "CONNECTION_ERROR", "detail": str(e)}
-
-
+        return {"error": str(e)}
 
 
 
