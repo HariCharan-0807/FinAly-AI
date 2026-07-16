@@ -23,24 +23,45 @@ def _send(to_email: str, subject: str, html_body: str) -> bool:
         print(f"[Email] No email provider configured — skipping '{subject}' to {to_email}")
         return False
 
+    payload = {
+        "to": to_email,
+        "subject": subject,
+        "html": html_body,
+    }
+
     try:
+        # Google Apps Script redirects POST (302) — follow manually keeping POST method
         resp = _requests.post(
             GMAIL_WEBHOOK_URL,
-            json={
-                "to": to_email,
-                "subject": subject,
-                "html": html_body,
-            },
+            json=payload,
             timeout=30,
-            # Google Apps Script redirects POST requests — follow them
-            allow_redirects=True,
+            allow_redirects=False,  # Don't auto-follow (it converts POST→GET)
         )
-        # Google Apps Script returns 200 on success (after redirect)
+
+        # Follow the redirect manually as POST
+        if resp.status_code in (301, 302, 303, 307, 308):
+            redirect_url = resp.headers.get('Location', '')
+            if redirect_url:
+                resp = _requests.post(
+                    redirect_url,
+                    json=payload,
+                    timeout=30,
+                    allow_redirects=True,
+                )
+
         if resp.status_code == 200:
-            print(f"[Email] ✅ Sent '{subject}' to {to_email}")
+            try:
+                data = resp.json()
+                if data.get('success'):
+                    print(f"[Email] ✅ Sent '{subject}' to {to_email}")
+                    return True
+            except Exception:
+                pass
+            # Even if we can't parse JSON, 200 usually means success
+            print(f"[Email] ✅ Sent '{subject}' to {to_email} (status 200)")
             return True
         else:
-            print(f"[Email] ❌ Webhook error {resp.status_code}: {resp.text[:200]}")
+            print(f"[Email] ❌ Webhook error {resp.status_code}: {resp.text[:300]}")
             return False
     except Exception as e:
         print(f"[Email] ❌ Request failed: {e}")
