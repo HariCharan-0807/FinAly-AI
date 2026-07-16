@@ -22,3 +22,13 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./.finaly_ai.db")
 # ── Security ─────────────────────────────────────────────────
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
+
+# ── Email / SMTP ─────────────────────────────────────────────
+SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
+SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
+SMTP_FROM     = os.getenv("SMTP_FROM_EMAIL", "")   # Set in Railway Variables
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")     # Gmail App Password
+SMTP_ENABLED  = bool(SMTP_FROM and SMTP_PASSWORD)  # Auto-detects if email is configured
+
+OTP_EXPIRE_MINUTES    = 10   # Email OTPs expire in 10 minutes
+RESET_TOKEN_EXPIRE_MINUTES = 10  # Password reset tokens expire in 10 minutes

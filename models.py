@@ -24,6 +24,17 @@ class User(Base):
     # Stored Fernet-encrypted; never in plaintext
     mfa_secret_encrypted = Column(Text, nullable=True)
 
+    # ── Email Verification ───────────────────────────────────
+    is_email_verified = Column(Boolean, default=False)
+    email_otp_hash    = Column(String(128), nullable=True)   # bcrypt hash of 6-digit OTP
+    email_otp_expiry  = Column(DateTime, nullable=True)
+
+    # ── Password Reset ───────────────────────────────────────
+    reset_otp_hash      = Column(String(128), nullable=True)  # bcrypt hash of OTP / TOTP token
+    reset_otp_expiry    = Column(DateTime, nullable=True)
+    reset_token         = Column(String(128), nullable=True)  # one-time reset token after verify
+    reset_token_expiry  = Column(DateTime, nullable=True)
+
     # ── Brute-force protection ───────────────────────────────
     failed_login_attempts = Column(Integer, default=0, nullable=False)
     lockout_until = Column(DateTime, nullable=True)

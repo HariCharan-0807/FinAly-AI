@@ -56,6 +56,15 @@ def _run_db_migrations() -> None:
     migrations = [
         "ALTER TABLE transactions ADD COLUMN import_source VARCHAR(20) DEFAULT 'manual'",
         "ALTER TABLE transactions ADD COLUMN import_hash  VARCHAR(64)",
+        # Email verification columns
+        "ALTER TABLE users ADD COLUMN is_email_verified BOOLEAN DEFAULT 1",
+        "ALTER TABLE users ADD COLUMN email_otp_hash VARCHAR(128)",
+        "ALTER TABLE users ADD COLUMN email_otp_expiry DATETIME",
+        # Password reset columns
+        "ALTER TABLE users ADD COLUMN reset_otp_hash VARCHAR(128)",
+        "ALTER TABLE users ADD COLUMN reset_otp_expiry DATETIME",
+        "ALTER TABLE users ADD COLUMN reset_token VARCHAR(128)",
+        "ALTER TABLE users ADD COLUMN reset_token_expiry DATETIME",
     ]
     try:
         with engine.connect() as conn:
@@ -189,12 +198,15 @@ def health():
 
 
 # ═══════════════════════════════════════════════════════════
-#  Endpoint: Sign Up
+#  Endpoint: Sign Up (with email OTP verification)
 # ═══════════════════════════════════════════════════════════
-@app.post("/api/signup", response_model=schemas.UserResponse,
-          status_code=status.HTTP_201_CREATED)
+@app.post("/api/signup", status_code=status.HTTP_201_CREATED)
 @limiter.limit("10/minute")
 def create_user(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
+    from email_service import send_otp_email, generate_otp
+    from config import SMTP_ENABLED, OTP_EXPIRE_MINUTES
+    from datetime import timedelta
+
     if db.query(models.User).filter(models.User.email == user.email).first():
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
@@ -203,11 +215,173 @@ def create_user(request: Request, user: schemas.UserCreate, db: Session = Depend
         full_name=user.full_name,
         dob=user.dob,
         hashed_password=get_password_hash(user.password),
+        is_email_verified=not SMTP_ENABLED,  # auto-verify if no SMTP configured
     )
-    db.add(new_user)
+
+    if SMTP_ENABLED:
+        # Generate OTP and send verification email
+        otp = generate_otp()
+        new_user.email_otp_hash   = get_password_hash(otp)
+        new_user.email_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        db.add(new_user)
+        db.commit()
+        sent = send_otp_email(user.email, otp, purpose="verification")
+        if not sent:
+            # If email failed, auto-verify so user isn't locked out
+            new_user.is_email_verified = True
+            db.commit()
+        return {"status": "otp_sent" if sent else "created", "email": user.email,
+                "message": f"A verification code was sent to {user.email}. Enter it to activate your account." if sent else "Account created successfully."}
+    else:
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return {"status": "created", "email": user.email,
+                "message": "Account created successfully. You can now log in."}
+
+
+# ═══════════════════════════════════════════════════════════
+#  Endpoint: Verify Email OTP (after signup)
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/verify-email")
+@limiter.limit("10/minute")
+def verify_email(request: Request, body: schemas.EmailVerifyRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    if user.is_email_verified:
+        raise HTTPException(status_code=400, detail="Email already verified. Please log in.")
+    if not user.email_otp_hash or not user.email_otp_expiry:
+        raise HTTPException(status_code=400, detail="No verification code found. Please sign up again.")
+    if datetime.now(timezone.utc) > user.email_otp_expiry.replace(tzinfo=timezone.utc):
+        raise HTTPException(status_code=400, detail="Verification code expired. Please sign up again.")
+    if not verify_password(body.otp, user.email_otp_hash):
+        raise HTTPException(status_code=400, detail="Invalid verification code.")
+
+    # Activate account
+    user.is_email_verified = True
+    user.email_otp_hash    = None
+    user.email_otp_expiry  = None
     db.commit()
-    db.refresh(new_user)
-    return new_user
+
+    # Send welcome email (non-blocking)
+    try:
+        from email_service import send_welcome_email
+        send_welcome_email(user.email, user.full_name)
+    except Exception:
+        pass
+
+    # Issue tokens so user is immediately logged in
+    if user.mfa_enabled:
+        pre_token = create_access_token({"sub": str(user.id), "pre_mfa": True}, expires_delta=__import__('datetime').timedelta(minutes=5))
+        return {"status": "mfa_required", "token": pre_token}
+
+    access_token  = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
+    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+
+
+# ═══════════════════════════════════════════════════════════
+#  Endpoint: Forgot Password — Step 1: Init
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/forgot-password/init")
+@limiter.limit("5/minute")
+def forgot_password_init(request: Request, body: schemas.ForgotPasswordInitRequest, db: Session = Depends(get_db)):
+    from email_service import send_otp_email, generate_otp
+    from config import SMTP_ENABLED, OTP_EXPIRE_MINUTES
+    from datetime import timedelta
+
+    # Always return success to avoid email enumeration
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        return {"method": "email_otp", "email": body.email, "smtp_available": SMTP_ENABLED,
+                "message": "If this email exists, a reset code was sent."}
+
+    if user.mfa_enabled and user.mfa_secret_encrypted:
+        # Flow A: User has MFA — use TOTP for verification (no email needed)
+        return {"method": "totp", "email": body.email, "smtp_available": True,
+                "message": "Enter the 6-digit code from your Google Authenticator app."}
+    elif SMTP_ENABLED:
+        # Flow B: Send OTP via email
+        otp = generate_otp()
+        user.reset_otp_hash   = get_password_hash(otp)
+        user.reset_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+        db.commit()
+        send_otp_email(body.email, otp, purpose="password_reset")
+        return {"method": "email_otp", "email": body.email, "smtp_available": True,
+                "message": f"A reset code was sent to {body.email}."}
+    else:
+        return {"method": "email_otp", "email": body.email, "smtp_available": False,
+                "message": "Email service not configured. Enable MFA to use password reset."}
+
+
+# ═══════════════════════════════════════════════════════════
+#  Endpoint: Forgot Password — Step 2: Verify Code
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/forgot-password/verify")
+@limiter.limit("10/minute")
+def forgot_password_verify(request: Request, body: schemas.ForgotPasswordVerifyRequest, db: Session = Depends(get_db)):
+    import secrets
+    from config import RESET_TOKEN_EXPIRE_MINUTES
+    from datetime import timedelta
+
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid request.")
+
+    verified = False
+
+    if user.mfa_enabled and user.mfa_secret_encrypted:
+        # Verify using TOTP (Google Authenticator)
+        plain_secret = decrypt_secret(user.mfa_secret_encrypted)
+        if verify_totp(plain_secret, body.code):
+            verified = True
+    elif user.reset_otp_hash and user.reset_otp_expiry:
+        # Verify email OTP
+        if datetime.now(timezone.utc) > user.reset_otp_expiry.replace(tzinfo=timezone.utc):
+            raise HTTPException(status_code=400, detail="Reset code has expired. Please start over.")
+        if verify_password(body.code, user.reset_otp_hash):
+            verified = True
+
+    if not verified:
+        raise HTTPException(status_code=400, detail="Invalid or expired code. Please try again.")
+
+    # Issue a one-time reset token valid for 10 minutes
+    reset_token = secrets.token_urlsafe(32)
+    user.reset_token        = get_password_hash(reset_token)
+    user.reset_token_expiry = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_EXPIRE_MINUTES)
+    user.reset_otp_hash     = None
+    user.reset_otp_expiry   = None
+    db.commit()
+
+    return {"reset_token": reset_token, "message": "Code verified. Set your new password."}
+
+
+# ═══════════════════════════════════════════════════════════
+#  Endpoint: Forgot Password — Step 3: Reset Password
+# ═══════════════════════════════════════════════════════════
+@app.post("/api/auth/forgot-password/reset")
+@limiter.limit("5/minute")
+def forgot_password_reset(request: Request, body: schemas.ForgotPasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if not user or not user.reset_token or not user.reset_token_expiry:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset session. Please start over.")
+    if datetime.now(timezone.utc) > user.reset_token_expiry.replace(tzinfo=timezone.utc):
+        raise HTTPException(status_code=400, detail="Reset session expired. Please start over.")
+    if not verify_password(body.reset_token, user.reset_token):
+        raise HTTPException(status_code=400, detail="Invalid reset token.")
+
+    # Update password and clear reset fields
+    user.hashed_password    = get_password_hash(body.new_password)
+    user.reset_token        = None
+    user.reset_token_expiry = None
+    user.failed_login_attempts = 0
+    user.lockout_until = None
+    db.commit()
+
+    return {"message": "Password reset successfully. You can now log in."}
+
+
 
 
 # ═══════════════════════════════════════════════════════════

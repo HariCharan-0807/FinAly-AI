@@ -309,8 +309,11 @@ async function loadMLInsights() {
       headers: { ...authHeader(), 'Content-Type': 'application/json' },
     });
 
-    // Handle non-OK responses
+    // Handle non-OK responses (actual server errors)
     if (!res.ok) {
+      const errJson = await res.json().catch(() => ({}));
+      // 401 = not logged in yet, don't show red error
+      if (res.status === 401) return;
       if (spendEl) spendEl.innerHTML = '<span style="color:#ef4444;font-size:13px;">⚠️ Could not load forecast. Please try again.</span>';
       if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#ef4444;">⚠️ Could not scan transactions.</p>';
       return;
@@ -318,10 +321,10 @@ async function loadMLInsights() {
 
     const data = await res.json();
 
-    // ── Handle insufficient data state ──────────────────────────────
+    // ── Handle insufficient data (no transactions yet) ──────────────
     if (data.model_status === 'insufficient_data' || !data.forecast) {
       if (spendEl) spendEl.innerHTML = '<span style="font-size:13px;color:#64748b;">➕ Add expense transactions to see your forecast.</span>';
-      if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#64748b;">Add at least 2 expense transactions to enable anomaly detection.</p>';
+      if (anomEl)  anomEl.innerHTML  = '<p style="font-size:13px;color:#64748b;">Add expense transactions to enable anomaly scanning.</p>';
       return;
     }
 

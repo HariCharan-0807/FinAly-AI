@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="FinAly AI \u2014 Secure login portal. AI-powered personal finance dashboard with MFA security.">
+  <meta name="description" content="FinAly AI — Secure login portal. AI-powered personal finance dashboard with MFA security.">
   <meta name="api-url" id="meta-api-url" content="https://web-production-c2931.up.railway.app">
-  <title>FinAly AI \u2014 Secure Login</title>
+  <title>FinAly AI — Secure Login</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="login.css?v=2.0">
+  <link rel="stylesheet" href="login.css?v=3.0">
 </head>
 <body>
 
@@ -55,6 +55,11 @@
           </div>
         </div>
 
+        <!-- Forgot Password link -->
+        <div style="text-align:right; margin-top:-8px; margin-bottom:12px;">
+          <a href="#" class="forgot-link" onclick="toggleView('forgot-form'); return false;">Forgot password?</a>
+        </div>
+
         <button type="submit" id="login-btn" class="primary-btn">
           <span class="btn-text">Sign In Securely</span>
           <span class="btn-spinner hidden" aria-hidden="true"></span>
@@ -75,7 +80,7 @@
         </div>
 
         <button type="submit" id="mfa-btn" class="primary-btn">
-          <span class="btn-text">Verify & Enter Dashboard</span>
+          <span class="btn-text">Verify &amp; Enter Dashboard</span>
           <span class="btn-spinner hidden" aria-hidden="true"></span>
         </button>
         <a href="#" class="toggle-link" onclick="toggleView('login-form')">← Back to Login</a>
@@ -94,7 +99,7 @@
           <div class="mfa-steps-title">How to set up</div>
           <div class="mfa-step">
             <span class="mfa-step-num">1</span>
-            <span class="mfa-step-text">Download <strong>Authenticator+</strong> (or Google Authenticator / Authy) from the App Store or Play Store.</span>
+            <span class="mfa-step-text">Download <strong>Google Authenticator</strong> or <strong>Authy</strong> (free) from the App Store or Play Store.</span>
           </div>
           <div class="mfa-step">
             <span class="mfa-step-num">2</span>
@@ -181,11 +186,112 @@
         <a href="#" class="toggle-link" onclick="toggleView('login-form')">Already have an account? Log In</a>
       </form>
 
+      <!-- ── EMAIL VERIFY FORM (after signup) ── -->
+      <div id="email-verify-form" class="hidden">
+        <div class="mfa-icon" style="font-size:36px;text-align:center;margin-bottom:12px;"></div>
+        <h2>Verify Your Email</h2>
+        <p class="form-subtitle">A 6-digit code was sent to <strong id="verify-email-display"></strong>. Enter it below to activate your account.</p>
+        <p class="form-subtitle" style="font-size:12px;color:#64748b;margin-top:4px;">Code expires in 10 minutes.</p>
+
+        <form onsubmit="handleEmailVerification(event)" novalidate>
+          <div class="input-group otp-group">
+            <input type="text" id="email-verify-code" placeholder="000000"
+                   maxlength="6" pattern="\d{6}" inputmode="numeric"
+                   autocomplete="one-time-code" required>
+          </div>
+          <button type="submit" id="email-verify-btn" class="primary-btn">
+            <span class="btn-text">Verify &amp; Activate</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+        </form>
+        <a href="#" class="toggle-link" onclick="toggleView('signup-form')">← Back to Sign Up</a>
+      </div>
+
+      <!-- ── FORGOT PASSWORD — STEP 1: Email ── -->
+      <form id="forgot-form" class="hidden" onsubmit="handleForgotInit(event)" novalidate>
+        <div style="font-size:32px;text-align:center;margin-bottom:12px;"></div>
+        <h2>Reset Password</h2>
+        <p class="form-subtitle">Enter your registered email and we'll send you a reset code.</p>
+
+        <div class="input-group">
+          <label for="forgot-email">Email Address</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="email" id="forgot-email" placeholder="you@example.com"
+                   autocomplete="email" required>
+          </div>
+        </div>
+
+        <button type="submit" id="forgot-btn" class="primary-btn">
+          <span class="btn-text">Send Reset Code</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+        <a href="#" class="toggle-link" onclick="toggleView('login-form')">← Back to Login</a>
+      </form>
+
+      <!-- ── FORGOT PASSWORD — STEP 2: Verify Code ── -->
+      <div id="forgot-verify-form" class="hidden">
+        <div style="font-size:32px;text-align:center;margin-bottom:12px;"></div>
+        <h2 id="forgot-verify-title">Enter Reset Code</h2>
+        <p class="form-subtitle" id="forgot-verify-subtitle">Enter the code to verify your identity.</p>
+
+        <form onsubmit="handleForgotVerify(event)" novalidate>
+          <div class="input-group otp-group">
+            <input type="text" id="forgot-verify-code" placeholder="000000"
+                   maxlength="6" pattern="\d{6}" inputmode="numeric"
+                   autocomplete="one-time-code" required>
+          </div>
+          <button type="submit" id="forgot-verify-btn" class="primary-btn">
+            <span class="btn-text">Verify Code</span>
+            <span class="btn-spinner hidden" aria-hidden="true"></span>
+          </button>
+        </form>
+        <a href="#" class="toggle-link" onclick="toggleView('forgot-form')">← Try Different Email</a>
+      </div>
+
+      <!-- ── FORGOT PASSWORD — STEP 3: New Password ── -->
+      <form id="forgot-reset-form" class="hidden" onsubmit="handleForgotReset(event)" novalidate>
+        <div style="font-size:32px;text-align:center;margin-bottom:12px;">🔐</div>
+        <h2>Set New Password</h2>
+        <p class="form-subtitle">Choose a strong password for your account.</p>
+
+        <div class="input-group">
+          <label for="new-password">New Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="password" id="new-password" placeholder="Strong password (min 8 chars)"
+                   autocomplete="new-password" required minlength="8"
+                   oninput="updateStrengthMeter(this.value)">
+            <button type="button" class="toggle-pwd" onclick="togglePwd('new-password', this)" aria-label="Show password">
+              <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+          <div class="strength-meter">
+            <div class="strength-bar" id="strength-bar"></div>
+          </div>
+          <p class="strength-label" id="strength-label"></p>
+        </div>
+
+        <div class="input-group">
+          <label for="new-password-confirm">Confirm New Password</label>
+          <div class="input-wrapper">
+            <span class="input-icon"></span>
+            <input type="password" id="new-password-confirm" placeholder="Repeat new password"
+                   autocomplete="new-password" required>
+          </div>
+        </div>
+
+        <button type="submit" id="forgot-reset-btn" class="primary-btn">
+          <span class="btn-text">Reset Password</span>
+          <span class="btn-spinner hidden" aria-hidden="true"></span>
+        </button>
+      </form>
+
     </div>
 
-    <p class="footer-text">Protected by 256-bit AES encryption & TOTP MFA</p>
+    <p class="footer-text">Protected by 256-bit AES encryption &amp; TOTP MFA</p>
   </div>
 
-  <script src="auth.js?v=2.4" defer></script>
+  <script src="auth.js?v=3.0" defer></script>
 </body>
 </html>

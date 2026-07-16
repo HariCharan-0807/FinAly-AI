@@ -94,6 +94,50 @@ class MFAVerifyResponse(BaseModel):
 
 
 # ═══════════════════════════════════════════════════════════
+#  Forgot Password Schemas
+# ═══════════════════════════════════════════════════════════
+class ForgotPasswordInitRequest(BaseModel):
+    email: str = Field(..., description="User's registered email")
+
+class ForgotPasswordInitResponse(BaseModel):
+    method: str        # 'totp' | 'email_otp'
+    email: str
+    message: str
+    smtp_available: bool = True
+
+class ForgotPasswordVerifyRequest(BaseModel):
+    email: str
+    code: str = Field(..., min_length=6, max_length=6)  # 6-digit OTP or TOTP
+
+class ForgotPasswordVerifyResponse(BaseModel):
+    reset_token: str
+    message: str
+
+class ForgotPasswordResetRequest(BaseModel):
+    email: str
+    reset_token: str
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+# ═══════════════════════════════════════════════════════════
+#  Email Verification Schemas
+# ═══════════════════════════════════════════════════════════
+class SignupInitResponse(BaseModel):
+    status: str        # 'otp_sent' | 'created' (fallback if no SMTP)
+    email: str
+    message: str
+
+class EmailVerifyRequest(BaseModel):
+    email: str
+    otp: str = Field(..., min_length=6, max_length=6)
+
+class EmailVerifyResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+
+
+# ═══════════════════════════════════════════════════════════
 #  Transaction Schemas
 # ═══════════════════════════════════════════════════════════
 VALID_CATEGORIES = [

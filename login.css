@@ -441,3 +441,13 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 @media (max-width: 500px) {
   .auth-card { padding: 28px 20px; }
 }
+
+/* ── Forgot Password Link ────────────────────────────── */
+.forgot-link {
+  font-size: 12px;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.forgot-link:hover { color: var(--accent-hover); text-decoration: underline; }

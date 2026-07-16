@@ -198,23 +198,203 @@ async function handleSignup(event) {
     const data = await res.json();
 
     if (res.ok) {
-      showToast(' Account created! Please sign in.', 'success');
-      document.getElementById('signup-form').reset();
-      const loginEmail = document.getElementById('login-email');
-      if (loginEmail) loginEmail.value = email;
-      sessionStorage.setItem('finaly_email', email);
-      toggleView('login-form');
+      if (data.status === 'otp_sent') {
+        // Email verification required
+        sessionStorage.setItem('verify_email', email);
+        const disp = document.getElementById('verify-email-display');
+        if (disp) disp.textContent = email;
+        showToast(`📧 Verification code sent to ${email}`, 'success', 6000);
+        toggleView('email-verify-form');
+      } else {
+        // No SMTP — direct login flow
+        showToast('✅ Account created! Please sign in.', 'success');
+        document.getElementById('signup-form').reset();
+        const loginEmail = document.getElementById('login-email');
+        if (loginEmail) loginEmail.value = email;
+        sessionStorage.setItem('finaly_email', email);
+        toggleView('login-form');
+      }
     } else {
       const msg = Array.isArray(data.detail)
         ? data.detail.map(e => e.msg.replace('Value error, ', '')).join(' • ')
         : (data.detail || 'Signup failed. Check your details.');
-      showToast(` ${msg}`, 'error', 7000);
+      showToast(`⚠️ ${msg}`, 'error', 7000);
     }
   } catch (err) {
     console.error('Signup network error:', err);
-    showToast('️ Cannot reach server. Is the backend running on port 8000?', 'error', 7000);
+    showToast('⚠️ Cannot reach server. Is the backend running?', 'error', 7000);
   } finally {
     setLoading('signup-btn', false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EMAIL VERIFICATION (after signup)
+// ═══════════════════════════════════════════════════════════
+async function handleEmailVerification(event) {
+  event.preventDefault();
+  const email = sessionStorage.getItem('verify_email') || '';
+  const otp   = document.getElementById('email-verify-code').value.trim();
+
+  if (!email) { showToast('Session expired. Please sign up again.', 'error'); toggleView('signup-form'); return; }
+  if (otp.length !== 6 || !/^\d{6}$/.test(otp)) {
+    showToast('Enter the 6-digit code from your email.', 'warning'); return;
+  }
+
+  setLoading('email-verify-btn', true);
+  try {
+    const res  = await fetch(`${API}/api/auth/verify-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, otp }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      sessionStorage.removeItem('verify_email');
+      if (data.access_token) {
+        sessionStorage.setItem('finaly_token',   data.access_token);
+        sessionStorage.setItem('finaly_refresh', data.refresh_token || '');
+        sessionStorage.setItem('finaly_email',   email);
+        showToast('🎉 Email verified! Welcome to FinAly AI!', 'success');
+        setTimeout(() => { window.location.href = 'index.html'; }, 1200);
+      } else {
+        showToast('✅ Email verified! Please log in.', 'success');
+        const loginEmail = document.getElementById('login-email');
+        if (loginEmail) loginEmail.value = email;
+        toggleView('login-form');
+      }
+    } else {
+      showToast(`⚠️ ${data.detail || 'Invalid code. Please try again.'}`, 'error', 6000);
+    }
+  } catch (err) {
+    showToast('⚠️ Cannot reach server.', 'error');
+  } finally {
+    setLoading('email-verify-btn', false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FORGOT PASSWORD — STEP 1: Init
+// ═══════════════════════════════════════════════════════════
+async function handleForgotInit(event) {
+  event.preventDefault();
+  const email = document.getElementById('forgot-email').value.trim();
+  if (!email) { showToast('Enter your email address.', 'warning'); return; }
+
+  setLoading('forgot-btn', true);
+  try {
+    const res  = await fetch(`${API}/api/auth/forgot-password/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      sessionStorage.setItem('reset_email',  email);
+      sessionStorage.setItem('reset_method', data.method);
+
+      const title    = document.getElementById('forgot-verify-title');
+      const subtitle = document.getElementById('forgot-verify-subtitle');
+
+      if (data.method === 'totp') {
+        if (title)    title.textContent    = 'Enter Authenticator Code';
+        if (subtitle) subtitle.textContent = 'Enter the 6-digit code from your Google Authenticator app.';
+        showToast('🔐 Open your Google Authenticator app and enter your code.', 'info', 6000);
+      } else if (!data.smtp_available) {
+        showToast('⚠️ Email service not configured. Enable MFA on your account to use password reset.', 'error', 8000);
+        return;
+      } else {
+        if (title)    title.textContent    = 'Enter Reset Code';
+        if (subtitle) subtitle.textContent = `Enter the 6-digit code sent to ${email}.`;
+        showToast(`📧 Reset code sent to ${email}`, 'success', 6000);
+      }
+      toggleView('forgot-verify-form');
+    } else {
+      showToast(`⚠️ ${data.detail || 'Something went wrong.'}`, 'error');
+    }
+  } catch (err) {
+    showToast('⚠️ Cannot reach server.', 'error');
+  } finally {
+    setLoading('forgot-btn', false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FORGOT PASSWORD — STEP 2: Verify Code
+// ═══════════════════════════════════════════════════════════
+async function handleForgotVerify(event) {
+  event.preventDefault();
+  const email = sessionStorage.getItem('reset_email') || '';
+  const code  = document.getElementById('forgot-verify-code').value.trim();
+
+  if (!email) { showToast('Session expired. Please start over.', 'error'); toggleView('forgot-form'); return; }
+  if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+    showToast('Enter a valid 6-digit code.', 'warning'); return;
+  }
+
+  setLoading('forgot-verify-btn', true);
+  try {
+    const res  = await fetch(`${API}/api/auth/forgot-password/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      sessionStorage.setItem('reset_token', data.reset_token);
+      showToast('✅ Code verified! Set your new password.', 'success');
+      toggleView('forgot-reset-form');
+    } else {
+      showToast(`⚠️ ${data.detail || 'Invalid code.'}`, 'error', 6000);
+    }
+  } catch (err) {
+    showToast('⚠️ Cannot reach server.', 'error');
+  } finally {
+    setLoading('forgot-verify-btn', false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  FORGOT PASSWORD — STEP 3: Reset Password
+// ═══════════════════════════════════════════════════════════
+async function handleForgotReset(event) {
+  event.preventDefault();
+  const email      = sessionStorage.getItem('reset_email') || '';
+  const resetToken = sessionStorage.getItem('reset_token') || '';
+  const newPwd     = document.getElementById('new-password').value;
+  const confirm    = document.getElementById('new-password-confirm').value;
+
+  if (!email || !resetToken) { showToast('Session expired. Please start over.', 'error'); toggleView('forgot-form'); return; }
+  if (newPwd.length < 8) { showToast('Password must be at least 8 characters.', 'warning'); return; }
+  if (newPwd !== confirm)  { showToast('Passwords do not match.', 'error'); return; }
+
+  setLoading('forgot-reset-btn', true);
+  try {
+    const res  = await fetch(`${API}/api/auth/forgot-password/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, reset_token: resetToken, new_password: newPwd }),
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      sessionStorage.removeItem('reset_email');
+      sessionStorage.removeItem('reset_token');
+      sessionStorage.removeItem('reset_method');
+      showToast('🎉 Password reset successfully! Please log in.', 'success', 5000);
+      const loginEmail = document.getElementById('login-email');
+      if (loginEmail) loginEmail.value = email;
+      toggleView('login-form');
+    } else {
+      showToast(`⚠️ ${data.detail || 'Reset failed. Please start over.'}`, 'error', 6000);
+    }
+  } catch (err) {
+    showToast('⚠️ Cannot reach server.', 'error');
+  } finally {
+    setLoading('forgot-reset-btn', false);
   }
 }
 
