@@ -302,6 +302,18 @@ async function loadDashboardSummary() {
       }
     }
 
+    // Render dynamic AI Savings Insights
+    const insightsGrid = document.getElementById('insights-grid');
+    if (insightsGrid && data.ai_insights && data.ai_insights.length > 0) {
+      insightsGrid.innerHTML = data.ai_insights.map(item => `
+        <div class="insight-card ${item.highlight ? 'highlight' : ''}">
+          <div class="insight-text">
+            <h4>${item.title || 'AI Insight'}</h4>
+            <p>${item.text || ''}</p>
+          </div>
+        </div>`).join('');
+    }
+
   } catch (e) {
     console.error('Dashboard summary failed:', e);
   }

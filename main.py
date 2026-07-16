@@ -664,6 +664,84 @@ def dashboard_summary(
             if t.transaction_type == "Expense" and t.date.month == m and t.date.year == y:
                 monthly_expense_totals[idx] += t.amount
 
+    # ── Dynamic AI Savings Insights ──
+    all_expenses = [t for t in txns if t.transaction_type == "Expense"]
+    total_expense_all = sum(t.amount for t in all_expenses)
+    ai_insights = []
+
+    if total_expense_all == 0:
+        ai_insights = [
+            {
+                "title": "Unlock AI Spend Analysis",
+                "text": "Add your first expense transaction or connect your bank account to receive personalized recommendations based on your spending habits.",
+                "highlight": False
+            },
+            {
+                "title": "Set Your Monthly Income",
+                "text": "Define your monthly income in your profile so our AI can calculate your exact disposable cash flow and optimal budget thresholds.",
+                "highlight": True
+            },
+            {
+                "title": "Create Your 50/30/20 Plan",
+                "text": "Aim to allocate 50% of income for essentials, 30% for personal wants, and 20% for savings once your transactions begin tracking.",
+                "highlight": False
+            }
+        ]
+    else:
+        # Use current month breakdown if available, else all time breakdown
+        active_breakdown = dict(breakdown) if sum(breakdown.values()) > 0 else defaultdict(float)
+        if not active_breakdown:
+            for t in all_expenses:
+                active_breakdown[t.category] += t.amount
+        sorted_cats = sorted(active_breakdown.items(), key=lambda x: x[1], reverse=True)
+        total_spent_active = sum(active_breakdown.values())
+
+        # Card 1: Top Category Optimization
+        top_cat, top_amt = sorted_cats[0]
+        pct_of_total = round((top_amt / total_spent_active) * 100, 1) if total_spent_active > 0 else 0
+        save_15 = round(top_amt * 0.15, 2)
+        if top_cat in ["Food & Dining", "Food", "Dining out", "Restaurants", "Entertainment", "Shopping"]:
+            c1_title = f"Optimize {top_cat} Outflows"
+            c1_text = f"{top_cat} is your largest expense at ₹{top_amt:,.2f} ({pct_of_total}% of total spend). Trimming this by just 15% retains ₹{save_15:,.2f}/month in your bank account."
+        elif top_cat in ["Rent", "Housing", "Utilities", "Bills"]:
+            c1_title = f"Audit Fixed {top_cat} Costs"
+            c1_text = f"{top_cat} accounts for ₹{top_amt:,.2f} ({pct_of_total}% of spend). Check for unused subscriptions or energy leaks to reduce fixed monthly burn."
+        else:
+            c1_title = f"Trim {top_cat} Expenses"
+            c1_text = f"You spent ₹{top_amt:,.2f} on {top_cat} ({pct_of_total}% of outflows). Setting a weekly cap of ₹{round((top_amt * 0.85)/4, 2):,.2f} could save you ₹{save_15:,.2f}/month."
+        ai_insights.append({"title": c1_title, "text": c1_text, "highlight": False})
+
+        # Card 2: Savings Rate / SIP Strategy
+        if monthly_income > 0 and total_spent_active > 0:
+            savings_rate = ((monthly_income - total_spent_active) / monthly_income) * 100
+            if savings_rate < 20:
+                shortfall = round((0.20 * monthly_income) - (monthly_income - total_spent_active), 2)
+                c2_title = "Bridge Your Savings Gap"
+                c2_text = f"Your current savings margin is {max(0, round(savings_rate, 1))}%. Reducing monthly expenses by ₹{max(0, shortfall):,.2f} brings you to the ideal 20% financial wellness mark."
+            else:
+                invest_amt = round((monthly_income - total_spent_active) * 0.50, 2)
+                c2_title = "Put Your Surplus to Work"
+                c2_text = f"Excellent {round(savings_rate, 1)}% savings rate! Investing ₹{max(500, invest_amt):,.2f}/month into an index fund SIP at 12% p.a. can double your money in ~6 years."
+            ai_insights.append({"title": c2_title, "text": c2_text, "highlight": True})
+        else:
+            potential_sip = max(1000, round(total_spent_active * 0.10, -2))
+            ai_insights.append({
+                "title": "Start a Monthly SIP",
+                "text": f"Setting aside just ₹{potential_sip:,.2f}/month into a mutual fund SIP at 12% annual return builds over ₹{round(potential_sip * 12 * 5 * 1.35, -3):,.0f} in 5 years through compounding.",
+                "highlight": True
+            })
+
+        # Card 3: Second Category or Automation
+        if len(sorted_cats) >= 2:
+            cat2_name, cat2_amt = sorted_cats[1]
+            save_cat2 = round(cat2_amt * 0.15, 2)
+            c3_title = f"Review {cat2_name} Spending"
+            c3_text = f"Your second highest spend is {cat2_name} (₹{cat2_amt:,.2f}). Saving 15% here frees up ₹{save_cat2:,.2f} for your emergency fund or investments."
+        else:
+            c3_title = "Automate Your Savings"
+            c3_text = "Set up an automatic bank transfer to your savings goal on payday. Saving before you spend is the #1 rule of wealth building."
+        ai_insights.append({"title": c3_title, "text": c3_text, "highlight": False})
+
     return {
         "full_name": current_user.full_name or "",
         "email": current_user.email or "",
@@ -676,6 +754,7 @@ def dashboard_summary(
         "weekly_expenses": [round(w, 2) for w in weekly_expenses],
         "daily_expenses": [round(d, 2) for d in daily_expenses],
         "monthly_expense_totals": [round(mt, 2) for mt in monthly_expense_totals],
+        "ai_insights": ai_insights,
     }
 
 
@@ -1143,15 +1222,14 @@ def _generate_reply(msg: str, name: str, db, user_id: int) -> str:
     if _match(msg, ["save more", "more money", "cut costs", "reduce spending",
                     "save money", "frugal", "tip", "advice", "recommend"]):
         return (
-            " Here are **proven tips to save more money**:\n\n"
-            "1.  **Cook at home** — Dining out 3 less days/week saves ~₹2,000/month\n"
-            "2.  **Audit subscriptions** — Cancel unused streaming/apps (avg. saves ₹800/month)\n"
-            "3.  **Shop with a list** — Impulse buying is the #1 budget killer\n"
-            "4.  **Automate savings** — Transfer to savings *before* spending anything\n"
-            "5.  **Use public transport** — Can save ₹1,500–₹3,000/month in cities\n"
-            "6.  **Track every rupee** — Use FinAly AI's Transactions tab daily\n"
-            "7.  **Set a goal** — People with goals save 3x more than those without\n\n"
-            "Which of these would you like to try first? I can help you set it up! "
+            " Here are **proven strategies to boost your savings rate**:\n\n"
+            "1.  **Analyze Your Top Outflows** — Check your Dashboard category donut chart to identify your top spending area and set a 15% reduction target.\n"
+            "2.  **Pay Yourself First** — Schedule an automatic bank transfer to your savings or investment account on payday *before* discretionary spending.\n"
+            "3.  **Audit Recurring Subscriptions** — Review fixed recurring deductions (OTT, gym, SaaS tools) quarterly to eliminate unused services.\n"
+            "4.  **Implement the 48-Hour Rule** — Wait 48 hours before making non-essential purchases over ₹1,000 to prevent impulse buying.\n"
+            "5.  **Start a Mutual Fund SIP** — Even ₹1,000/month invested in an index fund compounds significantly over a 5 to 10 year horizon.\n"
+            "6.  **Log Every Transaction** — Consistent tracking builds awareness and naturally reduces unnecessary outflows by 10–15%.\n\n"
+            "Check out your **AI Savings Insights** on the Dashboard for recommendations tailored to your exact transaction history! "
         )
 
     # ── Investments / SIP ──────────────────────────────────────────────────

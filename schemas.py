@@ -244,6 +244,7 @@ class DashboardSummary(BaseModel):
     weekly_expenses: list[float]   # 4 weeks of expenses for bar chart
     daily_expenses: list[float]    # 7 days (Mon-Sun) of expenses
     monthly_expense_totals: list[float]  # 6 months of expenses
+    ai_insights: list[dict] = []
 
 
 # ═══════════════════════════════════════════════════════════
