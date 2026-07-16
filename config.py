@@ -23,14 +23,18 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./.finaly_ai.db")
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
-# ── Email — Google Apps Script Webhook (100% free, uses Gmail) ──
-# Sends via Gmail's own servers = perfect deliverability, no domain needed
-GMAIL_WEBHOOK_URL = os.getenv("GMAIL_WEBHOOK_URL", "")
-EMAIL_ENABLED     = bool(GMAIL_WEBHOOK_URL)
+# ── Email — Gmail API (OAuth2, HTTPS/443, works on Railway) ──
+# Uses Google's official Gmail API — sends from your actual Gmail address
+# with proper SPF/DKIM authentication. 100% free, no domain needed.
+GMAIL_CLIENT_ID     = os.getenv("GMAIL_CLIENT_ID", "")
+GMAIL_CLIENT_SECRET = os.getenv("GMAIL_CLIENT_SECRET", "")
+GMAIL_REFRESH_TOKEN = os.getenv("GMAIL_REFRESH_TOKEN", "")
+GMAIL_FROM          = os.getenv("GMAIL_FROM", "finalyai.help@gmail.com")
+EMAIL_ENABLED       = bool(GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET and GMAIL_REFRESH_TOKEN)
 
 # Backward compat aliases
 SMTP_ENABLED = EMAIL_ENABLED
-SMTP_FROM    = os.getenv("SMTP_FROM_EMAIL", "finalyai.help@gmail.com")
+SMTP_FROM    = GMAIL_FROM
 
 OTP_EXPIRE_MINUTES         = 10
 RESET_TOKEN_EXPIRE_MINUTES = 10

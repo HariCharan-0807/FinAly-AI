@@ -1,82 +1,69 @@
 """
-FinAly AI — Email Service (Google Apps Script Webhook)
-Sends emails via a Google Apps Script web app that uses GmailApp.sendEmail().
-This bypasses Railway's SMTP port blocks (uses HTTPS/443) and sends from
-the actual Gmail account — perfect SPF/DKIM, 100% free, no domain needed.
+FinAly AI — Email Service (Gmail API / OAuth2)
+Sends emails via Google's official Gmail API over HTTPS (port 443).
+This works on Railway free tier and sends from the actual Gmail address
+with proper SPF/DKIM — guaranteed inbox delivery.
 
-Limit: ~100 emails/day (free Gmail) — more than enough for a project.
+Setup: Run `python setup_gmail.py` once locally to get OAuth2 credentials.
 """
+import base64
 import random
 import string
-import requests as _requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-from config import GMAIL_WEBHOOK_URL, EMAIL_ENABLED
+from config import (
+    GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET, GMAIL_REFRESH_TOKEN,
+    GMAIL_FROM, EMAIL_ENABLED,
+)
 
 
 def generate_otp(length: int = 6) -> str:
     return ''.join(random.choices(string.digits, k=length))
 
 
+def _get_gmail_service():
+    """Build a Gmail API service using OAuth2 refresh token."""
+    from google.oauth2.credentials import Credentials
+    from googleapiclient.discovery import build
+
+    creds = Credentials(
+        token=None,
+        refresh_token=GMAIL_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GMAIL_CLIENT_ID,
+        client_secret=GMAIL_CLIENT_SECRET,
+        scopes=["https://www.googleapis.com/auth/gmail.send"],
+    )
+    return build("gmail", "v1", credentials=creds, cache_discovery=False)
+
+
 def _send(to_email: str, subject: str, html_body: str) -> bool:
-    """Send email via Google Apps Script webhook. Returns True on success."""
+    """Send email via Gmail API. Returns True on success."""
     if not EMAIL_ENABLED:
-        print(f"[Email] No email provider configured — skipping '{subject}' to {to_email}")
+        print(f"[Email] Gmail API not configured — skipping '{subject}' to {to_email}")
         return False
 
-    payload = {
-        "to": to_email,
-        "subject": subject,
-        "html": html_body,
-    }
-
     try:
-        # Step 1: POST to the /exec URL — Google returns 302 redirect
-        resp = _requests.post(
-            GMAIL_WEBHOOK_URL,
-            json=payload,
-            timeout=30,
-            allow_redirects=False,
-        )
-        print(f"[Email] Initial response: {resp.status_code}")
+        service = _get_gmail_service()
 
-        # Step 2: If redirected, POST again to the redirect URL
-        if resp.status_code in (301, 302, 303, 307, 308):
-            redirect_url = resp.headers.get('Location', '')
-            print(f"[Email] Redirected to: {redirect_url[:100]}...")
-            if redirect_url:
-                # For 302/303, we need to re-POST with the data
-                resp = _requests.post(
-                    redirect_url,
-                    json=payload,
-                    timeout=30,
-                    allow_redirects=False,
-                )
-                print(f"[Email] After redirect: status={resp.status_code}, body={resp.text[:200]}")
+        msg = MIMEMultipart("alternative")
+        msg["From"]    = f"FinAly AI <{GMAIL_FROM}>"
+        msg["To"]      = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(html_body, "html"))
 
-                # Google might redirect AGAIN
-                if resp.status_code in (301, 302, 303, 307, 308):
-                    redirect_url2 = resp.headers.get('Location', '')
-                    if redirect_url2:
-                        resp = _requests.post(
-                            redirect_url2,
-                            json=payload,
-                            timeout=30,
-                            allow_redirects=True,
-                        )
-                        print(f"[Email] After 2nd redirect: status={resp.status_code}")
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        result = service.users().messages().send(
+            userId="me",
+            body={"raw": raw}
+        ).execute()
 
-        if resp.status_code == 200:
-            text = resp.text[:300]
-            print(f"[Email] ✅ Response 200: {text}")
-            if 'error' in text.lower() and 'success' not in text.lower():
-                print(f"[Email] ❌ Script returned error")
-                return False
-            return True
-        else:
-            print(f"[Email] ❌ Final status {resp.status_code}: {resp.text[:300]}")
-            return False
+        print(f"[Email] ✅ Sent '{subject}' to {to_email} (id: {result.get('id', '?')})")
+        return True
+
     except Exception as e:
-        print(f"[Email] ❌ Request failed: {e}")
+        print(f"[Email] ❌ Gmail API error: {e}")
         return False
 
 

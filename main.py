@@ -113,17 +113,17 @@ def health_check(db: Session = Depends(get_db)):
 # ── Email debug endpoint (remove after debugging) ────────────
 @app.get("/api/debug/smtp-test")
 def smtp_test(to: str = ""):
-    """Test email sending via Gmail webhook."""
-    from config import EMAIL_ENABLED, GMAIL_WEBHOOK_URL
+    """Test email sending via Gmail API."""
+    from config import EMAIL_ENABLED, GMAIL_FROM
     from email_service import send_otp_email
     if not to:
         to = "test@example.com"
     if not EMAIL_ENABLED:
-        return {"error": "GMAIL_WEBHOOK_URL not set in Railway Variables.",
-                "GMAIL_WEBHOOK_URL": bool(GMAIL_WEBHOOK_URL)}
+        return {"error": "Gmail API not configured. Run setup_gmail.py and add variables to Railway.",
+                "EMAIL_ENABLED": False}
     try:
         sent = send_otp_email(to, "123456", purpose="verification")
-        return {"success": sent, "provider": "gmail_webhook", "to": to}
+        return {"success": sent, "provider": "gmail_api", "from": GMAIL_FROM, "to": to}
     except Exception as e:
         return {"error": str(e)}
 

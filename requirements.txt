@@ -35,3 +35,8 @@ reportlab>=4.1.0
 
 # ── HTTP Requests (Live Banking Adapter) ───────────────────
 requests>=2.31.0
+
+# ── Gmail API (Email Sending) ─────────────────────────────
+google-api-python-client>=2.130.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
