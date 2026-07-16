@@ -1,17 +1,16 @@
 """
-FinAly AI — Email Service (Brevo / Resend)
-Uses HTTPS APIs (port 443) so it works on Railway's free tier.
-Brevo = 300 emails/day free to ANY recipient. No domain needed.
+FinAly AI — Email Service (Google Apps Script Webhook)
+Sends emails via a Google Apps Script web app that uses GmailApp.sendEmail().
+This bypasses Railway's SMTP port blocks (uses HTTPS/443) and sends from
+the actual Gmail account — perfect SPF/DKIM, 100% free, no domain needed.
+
+Limit: ~100 emails/day (free Gmail) — more than enough for a project.
 """
 import random
 import string
 import requests as _requests
 
-from config import (
-    BREVO_API_KEY, BREVO_FROM, BREVO_ENABLED,
-    RESEND_API_KEY, RESEND_FROM, RESEND_ENABLED,
-    EMAIL_ENABLED,
-)
+from config import GMAIL_WEBHOOK_URL, EMAIL_ENABLED
 
 
 def generate_otp(length: int = 6) -> str:
@@ -19,71 +18,32 @@ def generate_otp(length: int = 6) -> str:
 
 
 def _send(to_email: str, subject: str, html_body: str) -> bool:
-    """Send email via Brevo (priority) or Resend. Returns True on success."""
+    """Send email via Google Apps Script webhook. Returns True on success."""
     if not EMAIL_ENABLED:
         print(f"[Email] No email provider configured — skipping '{subject}' to {to_email}")
         return False
 
-    if BREVO_ENABLED:
-        return _send_brevo(to_email, subject, html_body)
-    else:
-        return _send_resend(to_email, subject, html_body)
-
-
-def _send_brevo(to_email: str, subject: str, html_body: str) -> bool:
-    """Send via Brevo (Sendinblue) HTTPS API."""
     try:
         resp = _requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            headers={
-                "api-key": BREVO_API_KEY,
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            },
+            GMAIL_WEBHOOK_URL,
             json={
-                "sender": {"name": "FinAly AI", "email": BREVO_FROM},
-                "to": [{"email": to_email}],
-                "subject": subject,
-                "htmlContent": html_body,
-            },
-            timeout=15,
-        )
-        if resp.status_code in (200, 201):
-            print(f"[Email/Brevo] ✅ Sent '{subject}' to {to_email}")
-            return True
-        else:
-            print(f"[Email/Brevo] ❌ Error {resp.status_code}: {resp.text}")
-            return False
-    except Exception as e:
-        print(f"[Email/Brevo] ❌ Request failed: {e}")
-        return False
-
-
-def _send_resend(to_email: str, subject: str, html_body: str) -> bool:
-    """Send via Resend HTTPS API (fallback)."""
-    try:
-        resp = _requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "from": RESEND_FROM,
-                "to": [to_email],
+                "to": to_email,
                 "subject": subject,
                 "html": html_body,
             },
-            timeout=15,
+            timeout=30,
+            # Google Apps Script redirects POST requests — follow them
+            allow_redirects=True,
         )
-        if resp.status_code in (200, 201):
-            print(f"[Email/Resend] ✅ Sent '{subject}' to {to_email}")
+        # Google Apps Script returns 200 on success (after redirect)
+        if resp.status_code == 200:
+            print(f"[Email] ✅ Sent '{subject}' to {to_email}")
             return True
         else:
-            print(f"[Email/Resend] ❌ Error {resp.status_code}: {resp.text}")
+            print(f"[Email] ❌ Webhook error {resp.status_code}: {resp.text[:200]}")
             return False
     except Exception as e:
-        print(f"[Email/Resend] ❌ Request failed: {e}")
+        print(f"[Email] ❌ Request failed: {e}")
         return False
 
 
@@ -146,4 +106,4 @@ def send_welcome_email(to_email: str, full_name: str) -> bool:
     </body>
     </html>
     """
-    return _send(to_email, f"Welcome to FinAly AI! 🎉", html)
+    return _send(to_email, "Welcome to FinAly AI! 🎉", html)

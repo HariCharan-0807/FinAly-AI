@@ -113,19 +113,17 @@ def health_check(db: Session = Depends(get_db)):
 # ── Email debug endpoint (remove after debugging) ────────────
 @app.get("/api/debug/smtp-test")
 def smtp_test(to: str = ""):
-    """Test Resend email API and return exact success/error."""
-    import requests as req
-    from config import EMAIL_ENABLED, BREVO_ENABLED, BREVO_API_KEY, BREVO_FROM, RESEND_ENABLED
+    """Test email sending via Gmail webhook."""
+    from config import EMAIL_ENABLED, GMAIL_WEBHOOK_URL
     from email_service import send_otp_email
     if not to:
         to = "test@example.com"
     if not EMAIL_ENABLED:
-        return {"error": "No email provider configured. Set BREVO_API_KEY in Railway Variables.",
-                "BREVO_ENABLED": BREVO_ENABLED, "RESEND_ENABLED": RESEND_ENABLED}
+        return {"error": "GMAIL_WEBHOOK_URL not set in Railway Variables.",
+                "GMAIL_WEBHOOK_URL": bool(GMAIL_WEBHOOK_URL)}
     try:
         sent = send_otp_email(to, "123456", purpose="verification")
-        return {"success": sent, "provider": "brevo" if BREVO_ENABLED else "resend",
-                "to": to, "BREVO_FROM": BREVO_FROM}
+        return {"success": sent, "provider": "gmail_webhook", "to": to}
     except Exception as e:
         return {"error": str(e)}
 

@@ -23,25 +23,14 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./.finaly_ai.db")
 MAX_LOGIN_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
-# ── Email API (Brevo / Resend) — HTTPS/443 (works on Railway free tier) ───
-# Brevo (formerly Sendinblue) allows sending up to 300 emails/day to ANY recipient email for free!
-BREVO_API_KEY = os.getenv("BREVO_API_KEY", "")
-BREVO_FROM    = os.getenv("BREVO_FROM", "finalyai.help@gmail.com")
+# ── Email — Google Apps Script Webhook (100% free, uses Gmail) ──
+# Sends via Gmail's own servers = perfect deliverability, no domain needed
+GMAIL_WEBHOOK_URL = os.getenv("GMAIL_WEBHOOK_URL", "")
+EMAIL_ENABLED     = bool(GMAIL_WEBHOOK_URL)
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-RESEND_FROM    = os.getenv("RESEND_FROM", "FinAly AI <onboarding@resend.dev>")
-
-# Enable email if either Brevo or Resend is configured (Brevo takes priority)
-BREVO_ENABLED  = bool(BREVO_API_KEY)
-RESEND_ENABLED = bool(RESEND_API_KEY)
-EMAIL_ENABLED  = BREVO_ENABLED or RESEND_ENABLED
-
-# Keep SMTP vars for backwards compat / aliases
-SMTP_HOST     = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT     = int(os.getenv("SMTP_PORT", "587"))
-SMTP_FROM     = os.getenv("SMTP_FROM_EMAIL", BREVO_FROM if BREVO_ENABLED else RESEND_FROM)
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
-SMTP_ENABLED  = EMAIL_ENABLED
+# Backward compat aliases
+SMTP_ENABLED = EMAIL_ENABLED
+SMTP_FROM    = os.getenv("SMTP_FROM_EMAIL", "finalyai.help@gmail.com")
 
 OTP_EXPIRE_MINUTES         = 10
 RESET_TOKEN_EXPIRE_MINUTES = 10
