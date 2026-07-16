@@ -30,38 +30,50 @@ def _send(to_email: str, subject: str, html_body: str) -> bool:
     }
 
     try:
-        # Google Apps Script redirects POST (302) — follow manually keeping POST method
+        # Step 1: POST to the /exec URL — Google returns 302 redirect
         resp = _requests.post(
             GMAIL_WEBHOOK_URL,
             json=payload,
             timeout=30,
-            allow_redirects=False,  # Don't auto-follow (it converts POST→GET)
+            allow_redirects=False,
         )
+        print(f"[Email] Initial response: {resp.status_code}")
 
-        # Follow the redirect manually as POST
+        # Step 2: If redirected, POST again to the redirect URL
         if resp.status_code in (301, 302, 303, 307, 308):
             redirect_url = resp.headers.get('Location', '')
+            print(f"[Email] Redirected to: {redirect_url[:100]}...")
             if redirect_url:
+                # For 302/303, we need to re-POST with the data
                 resp = _requests.post(
                     redirect_url,
                     json=payload,
                     timeout=30,
-                    allow_redirects=True,
+                    allow_redirects=False,
                 )
+                print(f"[Email] After redirect: status={resp.status_code}, body={resp.text[:200]}")
+
+                # Google might redirect AGAIN
+                if resp.status_code in (301, 302, 303, 307, 308):
+                    redirect_url2 = resp.headers.get('Location', '')
+                    if redirect_url2:
+                        resp = _requests.post(
+                            redirect_url2,
+                            json=payload,
+                            timeout=30,
+                            allow_redirects=True,
+                        )
+                        print(f"[Email] After 2nd redirect: status={resp.status_code}")
 
         if resp.status_code == 200:
-            try:
-                data = resp.json()
-                if data.get('success'):
-                    print(f"[Email] ✅ Sent '{subject}' to {to_email}")
-                    return True
-            except Exception:
-                pass
-            # Even if we can't parse JSON, 200 usually means success
-            print(f"[Email] ✅ Sent '{subject}' to {to_email} (status 200)")
+            text = resp.text[:300]
+            print(f"[Email] ✅ Response 200: {text}")
+            if 'error' in text.lower() and 'success' not in text.lower():
+                print(f"[Email] ❌ Script returned error")
+                return False
             return True
         else:
-            print(f"[Email] ❌ Webhook error {resp.status_code}: {resp.text[:300]}")
+            print(f"[Email] ❌ Final status {resp.status_code}: {resp.text[:300]}")
             return False
     except Exception as e:
         print(f"[Email] ❌ Request failed: {e}")
