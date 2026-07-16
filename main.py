@@ -226,7 +226,7 @@ def health():
 @limiter.limit("10/minute")
 def create_user(request: Request, user: schemas.UserCreate, db: Session = Depends(get_db)):
     from email_service import send_otp_email, generate_otp
-    from config import SMTP_ENABLED, OTP_EXPIRE_MINUTES
+    from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
     from datetime import timedelta
 
     if db.query(models.User).filter(models.User.email == user.email).first():
@@ -237,10 +237,10 @@ def create_user(request: Request, user: schemas.UserCreate, db: Session = Depend
         full_name=user.full_name,
         dob=user.dob,
         hashed_password=get_password_hash(user.password),
-        is_email_verified=not SMTP_ENABLED,  # auto-verify if no SMTP configured
+        is_email_verified=not RESEND_ENABLED,  # auto-verify if no email configured
     )
 
-    if SMTP_ENABLED:
+    if RESEND_ENABLED:
         # Generate OTP and send verification email
         otp = generate_otp()
         new_user.email_otp_hash   = get_password_hash(otp)
@@ -248,6 +248,7 @@ def create_user(request: Request, user: schemas.UserCreate, db: Session = Depend
         db.add(new_user)
         db.commit()
         sent = send_otp_email(user.email, otp, purpose="verification")
+        print(f"[Signup] Verification OTP to {user.email}: {'SUCCESS' if sent else 'FAILED'}")
         if not sent:
             # If email failed, auto-verify so user isn't locked out
             new_user.is_email_verified = True
@@ -310,10 +311,10 @@ def verify_email(request: Request, body: schemas.EmailVerifyRequest, db: Session
 @limiter.limit("5/minute")
 def forgot_password_init(request: Request, body: schemas.ForgotPasswordInitRequest, db: Session = Depends(get_db)):
     from email_service import send_otp_email, generate_otp
-    from config import SMTP_ENABLED, OTP_EXPIRE_MINUTES
+    from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
     from datetime import timedelta
 
-    if not SMTP_ENABLED:
+    if not RESEND_ENABLED:
         raise HTTPException(
             status_code=503,
             detail="Email service is not configured on this server. Please contact support."
@@ -325,7 +326,10 @@ def forgot_password_init(request: Request, body: schemas.ForgotPasswordInitReque
         user.reset_otp_hash   = get_password_hash(otp)
         user.reset_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
         db.commit()
-        send_otp_email(body.email, otp, purpose="password_reset")
+        sent = send_otp_email(body.email, otp, purpose="password_reset")
+        print(f"[ForgotPwd] OTP send to {body.email}: {'SUCCESS' if sent else 'FAILED'}")
+    else:
+        print(f"[ForgotPwd] No user found for {body.email} — returning generic message")
 
     # Always return same response — don't reveal if email exists
     return {"message": f"If {body.email} is registered, a reset code has been sent."}
@@ -422,6 +426,22 @@ def login(request: Request, credentials: schemas.UserLogin, db: Session = Depend
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid credentials.",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Block login if email not verified — resend OTP
+    if not user.is_email_verified:
+        from config import RESEND_ENABLED, OTP_EXPIRE_MINUTES
+        if RESEND_ENABLED:
+            from email_service import send_otp_email, generate_otp
+            from datetime import timedelta
+            otp = generate_otp()
+            user.email_otp_hash   = get_password_hash(otp)
+            user.email_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
+            db.commit()
+            send_otp_email(user.email, otp, purpose="verification")
+        raise HTTPException(
+            status_code=403,
+            detail="email_not_verified"
         )
 
     # Successful login — reset failed attempts

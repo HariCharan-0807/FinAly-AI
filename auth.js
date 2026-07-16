@@ -40,7 +40,12 @@ function setLoading(btnId, isLoading) {
 //  View Toggling
 // ═══════════════════════════════════════════════════════════
 function toggleView(formId) {
-  ['login-form', 'signup-form', 'mfa-form', 'mfa-setup-form'].forEach(id => {
+  // Hide ALL auth forms — this list must include every panel in login.html
+  const allForms = [
+    'login-form', 'signup-form', 'mfa-form', 'mfa-setup-form',
+    'email-verify-form', 'forgot-form', 'forgot-verify-form', 'forgot-reset-form'
+  ];
+  allForms.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.add('hidden');
   });
@@ -415,8 +420,18 @@ async function handleLogin(event) {
 
     const data = await res.json();
 
+    // User hasn't verified email yet — redirect to verify form
+    if (res.status === 403 && data.detail === 'email_not_verified') {
+      sessionStorage.setItem('verify_email', email);
+      const disp = document.getElementById('verify-email-display');
+      if (disp) disp.textContent = email;
+      showToast(`📧 Please verify your email first. A new code was sent to ${email}.`, 'warning', 8000);
+      toggleView('email-verify-form');
+      return;
+    }
+
     if (!res.ok) {
-      showToast(` ${data.detail || 'Login failed. Check your credentials.'}`, 'error', 5000);
+      showToast(`⚠️ ${data.detail || 'Login failed. Check your credentials.'}`, 'error', 5000);
       return;
     }
 
