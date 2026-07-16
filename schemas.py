@@ -68,6 +68,8 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     mfa_required: bool = False
+    full_name: str = ""
+    email: str = ""
 
 
 class RefreshRequest(BaseModel):
@@ -231,6 +233,8 @@ class MonthlyIncomeUpdate(BaseModel):
 #  Dashboard Summary Schema
 # ═══════════════════════════════════════════════════════════
 class DashboardSummary(BaseModel):
+    full_name: str = ""
+    email: str = ""
     total_balance: float
     monthly_income: float
     monthly_expenses: float

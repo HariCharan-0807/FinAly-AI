@@ -278,8 +278,15 @@ async function loadDashboardSummary() {
       now.toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
     // User badge
-    const email = sessionStorage.getItem('finaly_email') || '';
-    document.getElementById('user-name-badge').textContent = email.split('@')[0] || 'User';
+    const fullName = data.full_name || sessionStorage.getItem('finaly_name') || '';
+    const email = data.email || sessionStorage.getItem('finaly_email') || '';
+    if (fullName) {
+      sessionStorage.setItem('finaly_name', fullName);
+      document.getElementById('user-name-badge').textContent = fullName;
+    } else {
+      document.getElementById('user-name-badge').textContent = email.split('@')[0] || 'User';
+    }
+    if (data.email) sessionStorage.setItem('finaly_email', data.email);
 
     // Show income prompt if not set
     if (data.monthly_income === 0) {
@@ -1160,8 +1167,9 @@ function appendBubble(role, text, withTypewriter = false) {
   if (role === 'user') {
     const avatar = document.createElement('div');
     avatar.className = 'chat-avatar user-avatar';
+    const fullName = sessionStorage.getItem('finaly_name') || '';
     const email = sessionStorage.getItem('finaly_email') || '';
-    avatar.textContent = (email[0] || 'U').toUpperCase();
+    avatar.textContent = (fullName[0] || email[0] || 'U').toUpperCase();
     wrapper.appendChild(avatar);
     bubble.textContent = text;
     display.appendChild(wrapper);

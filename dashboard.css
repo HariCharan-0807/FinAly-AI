@@ -1238,19 +1238,81 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
 
 .hidden { display: none !important; }
 
-/* ── Responsive ──────────────────────────────────────────── */
-@media (max-width: 1024px) { .analytics-row { grid-template-columns: 1fr; } }
-@media (max-width: 768px) {
-  .navbar { padding: 0 16px; }
-  .nav-links { gap: 2px; }
-  .nav-link { font-size: 11px; padding: 6px 8px; }
-  .main-container { padding: 20px 16px; }
-  .metrics-grid { grid-template-columns: 1fr 1fr; }
-  .chat-container { height: 480px; }
+/* ── Responsive Architecture & Screen Size Adaptability ───────────────────── */
+@media (max-width: 1100px) {
+  .navbar {
+    height: auto;
+    min-height: 64px;
+    padding: 10px 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .nav-brand { order: 1; }
+  .nav-user { order: 2; margin-left: auto; }
+  .nav-links {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .analytics-row { grid-template-columns: 1fr; }
+  .metrics-grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+@media (max-width: 768px) {
+  .navbar { padding: 10px 16px; gap: 10px; }
+  .nav-brand { font-size: 16px; }
+  .nav-logo { width: 30px; height: 30px; font-size: 14px; }
+  .user-badge {
+    padding: 5px 12px;
+    font-size: 12px;
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .logout-btn { padding: 6px 12px; font-size: 12px; }
+  .nav-link { font-size: 12px; padding: 6px 12px; }
+  .main-container { padding: 16px 12px; }
+  .section-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .header-actions { width: 100%; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .metrics-grid { grid-template-columns: 1fr; gap: 12px; }
+  .budget-grid, .savings-grid, .export-grid { grid-template-columns: 1fr !important; gap: 16px; }
+  .transactions-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    display: block;
+  }
+  .transactions-table { min-width: 680px; }
+  .chat-container { height: 460px; }
+  .modal-box {
+    width: calc(100% - 24px) !important;
+    max-width: none !important;
+    margin: 12px auto;
+    max-height: 88vh;
+    padding: 20px 16px !important;
+  }
+  .form-row, .form-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+}
+
 @media (max-width: 480px) {
-  .metrics-grid { grid-template-columns: 1fr; }
-  .form-grid { grid-template-columns: 1fr; }
+  .navbar { padding: 8px 12px; }
+  .user-badge { max-width: 110px; padding: 4px 10px; }
+  .logout-btn { padding: 5px 10px; }
+  .nav-link { font-size: 11px; padding: 5px 10px; }
+  h1 { font-size: 1.35rem !important; }
+  h2 { font-size: 1.15rem !important; }
+  .metric-value { font-size: 1.6rem !important; }
+  .card, .chart-card { padding: 16px !important; border-radius: 14px; }
+  .chat-container { height: 400px; }
+  .export-stats-row { grid-template-columns: 1fr !important; }
 }
 /* ═══════════════════════════════════════════════════════════
    BANK ACCOUNTS SECTION

@@ -297,7 +297,13 @@ def verify_email(request: Request, body: schemas.EmailVerifyRequest, db: Session
 
     access_token  = create_access_token({"sub": str(user.id)})
     refresh_token = create_refresh_token({"sub": str(user.id)})
-    return {"access_token": access_token, "refresh_token": refresh_token, "token_type": "bearer"}
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "full_name": user.full_name or "",
+        "email": user.email or "",
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -452,6 +458,8 @@ def login(request: Request, credentials: schemas.UserLogin, db: Session = Depend
         "access_token": access_token,
         "token_type": "bearer",
         "mfa_required": user.mfa_enabled,
+        "full_name": user.full_name or "",
+        "email": user.email or "",
     }
 
 
@@ -509,6 +517,8 @@ def mfa_verify(
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
+        "full_name": current_user.full_name or "",
+        "email": current_user.email or "",
     }
 
 
@@ -530,7 +540,13 @@ def refresh_token(body: schemas.RefreshRequest, db: Session = Depends(get_db)):
     new_access = create_access_token(data={"sub": user.email})
     new_refresh = create_refresh_token(data={"sub": user.email})
 
-    return {"access_token": new_access, "refresh_token": new_refresh, "token_type": "bearer"}
+    return {
+        "access_token": new_access,
+        "refresh_token": new_refresh,
+        "token_type": "bearer",
+        "full_name": user.full_name or "",
+        "email": user.email or "",
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -649,6 +665,8 @@ def dashboard_summary(
                 monthly_expense_totals[idx] += t.amount
 
     return {
+        "full_name": current_user.full_name or "",
+        "email": current_user.email or "",
         "total_balance": round(total_balance, 2),
         "monthly_income": round(monthly_income, 2),
         "monthly_expenses": round(monthly_expenses, 2),

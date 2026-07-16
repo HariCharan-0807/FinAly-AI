@@ -206,6 +206,7 @@ async function handleSignup(event) {
       if (data.status === 'otp_sent') {
         // Email verification required
         sessionStorage.setItem('verify_email', email);
+        if (fullName) sessionStorage.setItem('finaly_name', fullName);
         const disp = document.getElementById('verify-email-display');
         if (disp) disp.textContent = email;
         showToast(`📧 Verification code sent to ${email}`, 'success', 6000);
@@ -217,6 +218,7 @@ async function handleSignup(event) {
         const loginEmail = document.getElementById('login-email');
         if (loginEmail) loginEmail.value = email;
         sessionStorage.setItem('finaly_email', email);
+        if (fullName) sessionStorage.setItem('finaly_name', fullName);
         toggleView('login-form');
       }
     } else {
@@ -260,7 +262,8 @@ async function handleEmailVerification(event) {
       if (data.access_token) {
         sessionStorage.setItem('finaly_token',   data.access_token);
         sessionStorage.setItem('finaly_refresh', data.refresh_token || '');
-        sessionStorage.setItem('finaly_email',   email);
+        sessionStorage.setItem('finaly_email',   data.email || email);
+        if (data.full_name) sessionStorage.setItem('finaly_name', data.full_name);
         showToast('🎉 Email verified! Welcome to FinAly AI!', 'success');
         setTimeout(() => { window.location.href = 'index.html'; }, 1200);
       } else {
@@ -437,7 +440,8 @@ async function handleLogin(event) {
 
     //  Credentials verified — store pre-MFA token
     sessionStorage.setItem('finaly_token', data.access_token);
-    sessionStorage.setItem('finaly_email', email);
+    sessionStorage.setItem('finaly_email', data.email || email);
+    if (data.full_name) sessionStorage.setItem('finaly_name', data.full_name);
 
     if (data.mfa_required) {
       // User already has MFA fully enabled — ask for OTP code
@@ -555,6 +559,8 @@ async function _doMFAVerify(code) {
       //  Verified — upgrade tokens and go to dashboard
       sessionStorage.setItem('finaly_token',   data.access_token);
       sessionStorage.setItem('finaly_refresh',  data.refresh_token);
+      if (data.full_name) sessionStorage.setItem('finaly_name', data.full_name);
+      if (data.email) sessionStorage.setItem('finaly_email', data.email);
       // Clear MFA setup temps
       sessionStorage.removeItem('auth_view');
       sessionStorage.removeItem('mfa_totp_uri');
