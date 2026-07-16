@@ -282,7 +282,7 @@ def verify_email(request: Request, body: schemas.EmailVerifyRequest, db: Session
 
 
 # ═══════════════════════════════════════════════════════════
-#  Endpoint: Forgot Password — Step 1: Init
+#  Endpoint: Forgot Password — Step 1: Init (email OTP only)
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/forgot-password/init")
 @limiter.limit("5/minute")
@@ -291,32 +291,26 @@ def forgot_password_init(request: Request, body: schemas.ForgotPasswordInitReque
     from config import SMTP_ENABLED, OTP_EXPIRE_MINUTES
     from datetime import timedelta
 
-    # Always return success to avoid email enumeration
-    user = db.query(models.User).filter(models.User.email == body.email).first()
-    if not user:
-        return {"method": "email_otp", "email": body.email, "smtp_available": SMTP_ENABLED,
-                "message": "If this email exists, a reset code was sent."}
+    if not SMTP_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Email service is not configured on this server. Please contact support."
+        )
 
-    if user.mfa_enabled and user.mfa_secret_encrypted:
-        # Flow A: User has MFA — use TOTP for verification (no email needed)
-        return {"method": "totp", "email": body.email, "smtp_available": True,
-                "message": "Enter the 6-digit code from your Google Authenticator app."}
-    elif SMTP_ENABLED:
-        # Flow B: Send OTP via email
+    user = db.query(models.User).filter(models.User.email == body.email).first()
+    if user:
         otp = generate_otp()
         user.reset_otp_hash   = get_password_hash(otp)
         user.reset_otp_expiry = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
         db.commit()
         send_otp_email(body.email, otp, purpose="password_reset")
-        return {"method": "email_otp", "email": body.email, "smtp_available": True,
-                "message": f"A reset code was sent to {body.email}."}
-    else:
-        return {"method": "email_otp", "email": body.email, "smtp_available": False,
-                "message": "Email service not configured. Enable MFA to use password reset."}
+
+    # Always return same response — don't reveal if email exists
+    return {"message": f"If {body.email} is registered, a reset code has been sent."}
 
 
 # ═══════════════════════════════════════════════════════════
-#  Endpoint: Forgot Password — Step 2: Verify Code
+#  Endpoint: Forgot Password — Step 2: Verify Email OTP
 # ═══════════════════════════════════════════════════════════
 @app.post("/api/auth/forgot-password/verify")
 @limiter.limit("10/minute")
@@ -326,25 +320,14 @@ def forgot_password_verify(request: Request, body: schemas.ForgotPasswordVerifyR
     from datetime import timedelta
 
     user = db.query(models.User).filter(models.User.email == body.email).first()
-    if not user:
-        raise HTTPException(status_code=400, detail="Invalid request.")
+    if not user or not user.reset_otp_hash or not user.reset_otp_expiry:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code. Please request a new one.")
 
-    verified = False
+    if datetime.now(timezone.utc) > user.reset_otp_expiry.replace(tzinfo=timezone.utc):
+        raise HTTPException(status_code=400, detail="Reset code has expired. Please request a new one.")
 
-    if user.mfa_enabled and user.mfa_secret_encrypted:
-        # Verify using TOTP (Google Authenticator)
-        plain_secret = decrypt_secret(user.mfa_secret_encrypted)
-        if verify_totp(plain_secret, body.code):
-            verified = True
-    elif user.reset_otp_hash and user.reset_otp_expiry:
-        # Verify email OTP
-        if datetime.now(timezone.utc) > user.reset_otp_expiry.replace(tzinfo=timezone.utc):
-            raise HTTPException(status_code=400, detail="Reset code has expired. Please start over.")
-        if verify_password(body.code, user.reset_otp_hash):
-            verified = True
-
-    if not verified:
-        raise HTTPException(status_code=400, detail="Invalid or expired code. Please try again.")
+    if not verify_password(body.code, user.reset_otp_hash):
+        raise HTTPException(status_code=400, detail="Incorrect reset code. Please check your email and try again.")
 
     # Issue a one-time reset token valid for 10 minutes
     reset_token = secrets.token_urlsafe(32)
@@ -354,7 +337,7 @@ def forgot_password_verify(request: Request, body: schemas.ForgotPasswordVerifyR
     user.reset_otp_expiry   = None
     db.commit()
 
-    return {"reset_token": reset_token, "message": "Code verified. Set your new password."}
+    return {"reset_token": reset_token, "message": "Code verified. You can now set a new password."}
 
 
 # ═══════════════════════════════════════════════════════════

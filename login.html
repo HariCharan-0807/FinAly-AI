@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="login.css?v=3.0">
+  <link rel="stylesheet" href="login.css?v=3.1">
 </head>
 <body>
 
@@ -56,8 +56,11 @@
         </div>
 
         <!-- Forgot Password link -->
-        <div style="text-align:right; margin-top:-8px; margin-bottom:12px;">
-          <a href="#" class="forgot-link" onclick="toggleView('forgot-form'); return false;">Forgot password?</a>
+        <div style="text-align:right; margin:-4px 0 16px;">
+          <a href="#" onclick="toggleView('forgot-form'); return false;"
+             style="font-size:13px;color:#4f46e5;font-weight:600;text-decoration:none;letter-spacing:0.01em;">
+            Forgot password?
+          </a>
         </div>
 
         <button type="submit" id="login-btn" class="primary-btn">
@@ -292,6 +295,6 @@
     <p class="footer-text">Protected by 256-bit AES encryption &amp; TOTP MFA</p>
   </div>
 
-  <script src="auth.js?v=3.0" defer></script>
+  <script src="auth.js?v=3.1" defer></script>
 </body>
 </html>

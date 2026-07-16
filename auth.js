@@ -292,27 +292,13 @@ async function handleForgotInit(event) {
     const data = await res.json();
 
     if (res.ok) {
-      sessionStorage.setItem('reset_email',  email);
-      sessionStorage.setItem('reset_method', data.method);
-
-      const title    = document.getElementById('forgot-verify-title');
+      sessionStorage.setItem('reset_email', email);
       const subtitle = document.getElementById('forgot-verify-subtitle');
-
-      if (data.method === 'totp') {
-        if (title)    title.textContent    = 'Enter Authenticator Code';
-        if (subtitle) subtitle.textContent = 'Enter the 6-digit code from your Google Authenticator app.';
-        showToast('🔐 Open your Google Authenticator app and enter your code.', 'info', 6000);
-      } else if (!data.smtp_available) {
-        showToast('⚠️ Email service not configured. Enable MFA on your account to use password reset.', 'error', 8000);
-        return;
-      } else {
-        if (title)    title.textContent    = 'Enter Reset Code';
-        if (subtitle) subtitle.textContent = `Enter the 6-digit code sent to ${email}.`;
-        showToast(`📧 Reset code sent to ${email}`, 'success', 6000);
-      }
+      if (subtitle) subtitle.textContent = `Enter the 6-digit code sent to ${email}.`;
+      showToast(`📧 ${data.message}`, 'success', 6000);
       toggleView('forgot-verify-form');
     } else {
-      showToast(`⚠️ ${data.detail || 'Something went wrong.'}`, 'error');
+      showToast(`⚠️ ${data.detail || 'Something went wrong. Please try again.'}`, 'error', 6000);
     }
   } catch (err) {
     showToast('⚠️ Cannot reach server.', 'error');
@@ -320,6 +306,7 @@ async function handleForgotInit(event) {
     setLoading('forgot-btn', false);
   }
 }
+
 
 // ═══════════════════════════════════════════════════════════
 //  FORGOT PASSWORD — STEP 2: Verify Code
