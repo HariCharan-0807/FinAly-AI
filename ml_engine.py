@@ -17,16 +17,26 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
     Returns an estimated next month's expenditure and spending anomalies.
     """
     now = datetime.now(timezone.utc)
+    # Use naive and aware boundaries to safely query regardless of SQLite/Postgres tz mapping
+    ninety_days_ago_aware = now - timedelta(days=90)
+    ninety_days_ago_naive = ninety_days_ago_aware.replace(tzinfo=None)
 
-    # ── Fetch last 90 days of expenses ─────────────────────────────────
-    ninety_days_ago = now - timedelta(days=90)
     txns = db.query(Transaction).filter(
         Transaction.user_id == user_id,
-        Transaction.transaction_type == "Expense",
-        Transaction.date >= ninety_days_ago
-    ).order_by(Transaction.date.asc()).all()
+        Transaction.transaction_type == "Expense"
+    ).all()
 
-    if not txns:
+    # Filter for last 90 days in memory with safe datetime comparisons
+    valid_txns = []
+    for t in txns:
+        if t.date is None:
+            continue
+        t_dt = t.date if isinstance(t.date, datetime) else datetime.combine(t.date, datetime.min.time())
+        t_comp = t_dt.replace(tzinfo=timezone.utc) if t_dt.tzinfo is None else t_dt
+        if t_comp >= ninety_days_ago_aware:
+            valid_txns.append(t)
+
+    if not valid_txns:
         return {
             "model_status": "insufficient_data",
             "message": "Add at least 1 expense transaction to see your spending forecast.",
@@ -36,7 +46,7 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
 
     # ── Aggregate daily totals across the full 90-day window ───────────
     daily_spend = {}
-    for t in txns:
+    for t in valid_txns:
         day_key = t.date.date() if hasattr(t.date, 'date') else t.date
         if isinstance(day_key, str):
             try:
@@ -46,10 +56,10 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
         daily_spend[day_key] = daily_spend.get(day_key, 0.0) + t.amount
 
     # Fill in zero-spend days so the regression slope is correct
-    all_days = sorted(daily_spend.keys())
-    if all_days:
-        start_day = all_days[0]
-        end_day   = all_days[-1]
+    sorted_day_keys = sorted(daily_spend.keys())
+    if sorted_day_keys:
+        start_day = sorted_day_keys[0]
+        end_day   = sorted_day_keys[-1]
         current   = start_day
         while current <= end_day:
             if current not in daily_spend:
@@ -60,17 +70,16 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
     n = len(sorted_days)
     y_vals = [daily_spend[d] for d in sorted_days]
 
-    # ── Baseline: average daily spend over last 30 days ────────────────
-    thirty_days_ago = now - timedelta(days=30)
-    last_30_amounts = [
-        t.amount for t in txns
-        if t.date is not None and (
-            t.date if isinstance(t.date, datetime) else
-            datetime.combine(t.date, datetime.min.time(), tzinfo=timezone.utc)
-        ) >= thirty_days_ago
-    ]
+    # ── Baseline: actual spending over last 30 days ────────────────────
+    thirty_days_ago_aware = now - timedelta(days=30)
+    last_30_amounts = []
+    for t in valid_txns:
+        t_dt = t.date if isinstance(t.date, datetime) else datetime.combine(t.date, datetime.min.time())
+        t_comp = t_dt.replace(tzinfo=timezone.utc) if t_dt.tzinfo is None else t_dt
+        if t_comp >= thirty_days_ago_aware:
+            last_30_amounts.append(t.amount)
+
     last_30_total = sum(last_30_amounts) if last_30_amounts else sum(y_vals)
-    # Normalize to exactly 30 days (not just transaction days)
     baseline_monthly = round(last_30_total, 2)
 
     # ── OLS Linear Regression for trend adjustment ──────────────────────
@@ -91,8 +100,9 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
         next_30_pred  = slope * (n + n + 30) / 2 + intercept
         trend_delta   = (next_30_pred - last_30_pred) * 30  # ₹ change
 
-        # Blended forecast: baseline + half the trend signal (dampened)
-        predicted_next_30d = max(round(baseline_monthly + trend_delta * 0.5, 2), 0.0)
+        # Dampen trend delta to at most ±50% of baseline to prevent extreme projections
+        capped_trend = max(-0.5 * baseline_monthly, min(0.5 * baseline_monthly, trend_delta * 0.5))
+        predicted_next_30d = max(round(baseline_monthly + capped_trend, 2), 0.0)
 
         # R² score
         mean_y  = sum_y / n
@@ -100,37 +110,48 @@ def run_classical_ml_analytics(db: Session, user_id: int) -> dict:
         ss_res  = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(x_vals, y_vals))
         r2_score = round(1 - (ss_res / ss_tot), 3) if ss_tot != 0 else 1.0
 
-        trend = "increasing" if slope > 2 else ("decreasing" if slope < -2 else "stable")
+        trend = "increasing" if slope > 5 else ("decreasing" if slope < -5 else "stable")
     else:
-        # Only 1 unique day of data — use that day as daily average × 30
-        day_avg = y_vals[0] if y_vals else 0.0
-        predicted_next_30d = round(day_avg * 30, 2)
-        slope  = 0.0
-        r2_score = 1.0
-        trend  = "stable"
+        # Only 1 unique day of data — use baseline directly or average
+        predicted_next_30d = round(baseline_monthly, 2)
+        trend = "stable"
 
-    # ── Z-Score Anomaly Detection ───────────────────────────────────────
-    amounts  = [t.amount for t in txns]
-    mean_amt = sum(amounts) / len(amounts)
-    variance = sum((a - mean_amt) ** 2 for a in amounts) / len(amounts)
+    # ── Z-Score & Outlier Anomaly Detection ─────────────────────────────
+    amounts = [t.amount for t in valid_txns]
+    mean_amt = sum(amounts) / len(amounts) if amounts else 0.0
+    variance = sum((a - mean_amt) ** 2 for a in amounts) / len(amounts) if amounts else 0.0
     std_dev  = math.sqrt(variance)
 
     anomalies = []
-    if std_dev > 0:
-        for t in txns:
+    if len(amounts) >= 2 and std_dev > 0:
+        for t in valid_txns:
             z_score = (t.amount - mean_amt) / std_dev
-            if z_score >= 1.96:
+            if z_score >= 1.65 or t.amount >= mean_amt * 2.5:
+                t_str = t.date.strftime("%Y-%m-%d") if hasattr(t.date, 'strftime') else str(t.date)[:10]
                 anomalies.append({
                     "id": t.id,
                     "description": t.description or t.category,
                     "amount": round(t.amount, 2),
                     "category": t.category,
-                    "date": t.date.strftime("%Y-%m-%d") if hasattr(t.date, 'strftime') else str(t.date)[:10],
+                    "date": t_str,
                     "z_score": round(z_score, 2),
-                    "confidence_pct": min(round((1 - math.exp(-z_score)) * 100, 1), 99.9)
+                    "confidence_pct": min(round((1 - math.exp(-max(0.1, z_score))) * 100, 1), 99.9)
                 })
+    elif len(amounts) == 1 and amounts[0] >= 10000:
+        # Single high-value expense check when starting out
+        t = valid_txns[0]
+        t_str = t.date.strftime("%Y-%m-%d") if hasattr(t.date, 'strftime') else str(t.date)[:10]
+        anomalies.append({
+            "id": t.id,
+            "description": t.description or t.category,
+            "amount": round(t.amount, 2),
+            "category": t.category,
+            "date": t_str,
+            "z_score": 2.0,
+            "confidence_pct": 86.5
+        })
 
-    anomalies.sort(key=lambda a: a["z_score"], reverse=True)
+    anomalies.sort(key=lambda a: a["amount"], reverse=True)
 
     return {
         "model_status": "active",
