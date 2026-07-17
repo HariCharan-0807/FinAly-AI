@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="dashboard.css?v=5.0">
+  <link rel="stylesheet" href="dashboard.css?v=6.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
   <!-- Instant auth guard — runs synchronously BEFORE any paint -->
   <script>
@@ -17,7 +17,7 @@
       window.location.replace('login.html');
     }
   </script>
-  <script src="dashboard.js?v=5.0" defer></script>
+  <script src="dashboard.js?v=6.0" defer></script>
 </head>
 <body>
 
@@ -436,58 +436,6 @@
         </div>
       </div>
 
-      <!-- ── Setu AA Interactive Consent Approval Modal ── -->
-      <div id="setu-consent-modal" class="modal-overlay hidden">
-        <div class="modal-card glass-card aa-consent-card">
-          <div class="aa-modal-header">
-            <div class="aa-modal-logo">Setu <span>AA</span></div>
-            <span class="aa-status-badge">RBI Sandbox Verified</span>
-          </div>
-          <h3 class="aa-modal-title">Approve Account Aggregator Consent</h3>
-          <p class="aa-modal-subtitle">You are granting secure read-only financial data access through the Setu Sahamati Network.</p>
-
-          <div class="aa-consent-details">
-            <div class="aa-detail-row">
-              <span class="aa-label">Financial Information User (FIU):</span>
-              <span class="aa-val">FinAly AI Dashboard</span>
-            </div>
-            <div class="aa-detail-row">
-              <span class="aa-label">Selected Bank (FIP):</span>
-              <span class="aa-val" id="aa-modal-bank">HDFC Bank Ltd</span>
-            </div>
-            <div class="aa-detail-row">
-              <span class="aa-label">User Identifier (VUA):</span>
-              <span class="aa-val" id="aa-modal-vua">9876543210@setu</span>
-            </div>
-            <div class="aa-detail-row">
-              <span class="aa-label">Consent Purpose:</span>
-              <span class="aa-val">Personal Finance Management & AI Wealth Insights</span>
-            </div>
-            <div class="aa-detail-row">
-              <span class="aa-label">Requested Data Types:</span>
-              <span class="aa-val">Deposit Accounts, Transactions (Last 12 Months)</span>
-            </div>
-            <div class="aa-detail-row">
-              <span class="aa-label">Consent Expiry:</span>
-              <span class="aa-val">365 Days (Revocable anytime)</span>
-            </div>
-          </div>
-
-          <div class="input-group" style="margin-top:16px;">
-            <label for="setu-otp-code">Enter Sandbox Consent OTP (Auto-filled)</label>
-            <input type="text" id="setu-otp-code" value="123456" maxlength="6" style="text-align:center;letter-spacing:6px;font-weight:700;font-size:1.1rem;">
-          </div>
-
-          <div class="aa-modal-actions">
-            <button class="secondary-btn" onclick="closeSetuAAModal()">Cancel / Reject</button>
-            <button class="primary-btn" id="setu-approve-btn" onclick="approveSetuAAConsent()">
-              <span class="btn-text">✔ Approve & Share Data</span>
-              <span class="btn-spinner hidden"></span>
-            </button>
-          </div>
-        </div>
-      </div>
-
       <!-- ── Accounts Panel (shown when bank is linked) ── -->
       <div id="bank-accounts-panel" style="display:none">
 
@@ -789,6 +737,58 @@
     </section>
 
   </main>
+
+  <!-- ── Setu AA Interactive Consent Approval Modal ── -->
+  <div id="setu-consent-modal" class="modal-overlay hidden">
+    <div class="modal-card glass-card aa-consent-card">
+      <div class="aa-modal-header">
+        <div class="aa-modal-logo">Setu <span>AA</span></div>
+        <span class="aa-status-badge">RBI Sandbox Verified</span>
+      </div>
+      <h3 class="aa-modal-title">Approve Account Aggregator Consent</h3>
+      <p class="aa-modal-subtitle">You are granting secure read-only financial data access through the Setu Sahamati Network.</p>
+
+      <div class="aa-consent-details">
+        <div class="aa-detail-row">
+          <span class="aa-label">Financial Information User (FIU):</span>
+          <span class="aa-val">FinAly AI Dashboard</span>
+        </div>
+        <div class="aa-detail-row">
+          <span class="aa-label">Selected Bank (FIP):</span>
+          <span class="aa-val" id="aa-modal-bank">HDFC Bank Ltd</span>
+        </div>
+        <div class="aa-detail-row">
+          <span class="aa-label">User Identifier (VUA):</span>
+          <span class="aa-val" id="aa-modal-vua">9876543210@setu</span>
+        </div>
+        <div class="aa-detail-row">
+          <span class="aa-label">Consent Purpose:</span>
+          <span class="aa-val">Personal Finance Management & AI Wealth Insights</span>
+        </div>
+        <div class="aa-detail-row">
+          <span class="aa-label">Requested Data Types:</span>
+          <span class="aa-val">Deposit Accounts, Transactions (Last 12 Months)</span>
+        </div>
+        <div class="aa-detail-row">
+          <span class="aa-label">Consent Expiry:</span>
+          <span class="aa-val">365 Days (Revocable anytime)</span>
+        </div>
+      </div>
+
+      <div class="input-group" style="margin-top:16px;">
+        <label for="setu-otp-code">Enter Sandbox Consent OTP (Auto-filled)</label>
+        <input type="text" id="setu-otp-code" value="123456" maxlength="6" style="text-align:center;letter-spacing:6px;font-weight:700;font-size:1.1rem;">
+      </div>
+
+      <div class="aa-modal-actions">
+        <button class="secondary-btn" onclick="closeSetuAAModal()">Cancel / Reject</button>
+        <button class="primary-btn" id="setu-approve-btn" onclick="approveSetuAAConsent()">
+          <span class="btn-text">✔ Approve & Share Data</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>

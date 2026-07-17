@@ -1423,8 +1423,10 @@ function selectAdapter(type) {
 
 // ── Setu AA Interactive Consent Flow ─────────────────────────
 function initiateSetuAAConsent() {
-  const vua = (document.getElementById('setu-vua') || {}).value?.trim() || '9876543210@setu';
-  const fipBank = (document.getElementById('setu-fip-bank') || {}).value || 'HDFC Bank';
+  const vuaInput = document.getElementById('setu-vua');
+  const fipSelect = document.getElementById('setu-fip-bank');
+  const vua = vuaInput ? (vuaInput.value?.trim() || '9876543210@setu') : '9876543210@setu';
+  const fipBank = fipSelect ? (fipSelect.value || 'HDFC Bank') : 'HDFC Bank';
 
   if (!vua.includes('@') && !/^\d{10}$/.test(vua)) {
     showToast('️ Please enter a valid 10-digit mobile number or Virtual User Address (e.g. 9876543210@setu)', 'warning', 5000);
@@ -1437,12 +1439,21 @@ function initiateSetuAAConsent() {
   if (modalBank) modalBank.textContent = fipBank;
 
   const modal = document.getElementById('setu-consent-modal');
-  if (modal) modal.classList.remove('hidden');
+  if (modal) {
+    modal.classList.remove('hidden');
+    modal.style.display = 'flex';
+  } else {
+    console.error('setu-consent-modal not found in DOM');
+    showToast('️ Error opening consent modal. Please refresh the page.', 'error');
+  }
 }
 
 function closeSetuAAModal() {
   const modal = document.getElementById('setu-consent-modal');
-  if (modal) modal.classList.add('hidden');
+  if (modal) {
+    modal.classList.add('hidden');
+    modal.style.display = 'none';
+  }
 }
 
 async function approveSetuAAConsent() {
@@ -1460,6 +1471,10 @@ async function approveSetuAAConsent() {
   if (btn) btn.disabled = false;
   closeSetuAAModal();
 }
+
+window.initiateSetuAAConsent = initiateSetuAAConsent;
+window.closeSetuAAModal = closeSetuAAModal;
+window.approveSetuAAConsent = approveSetuAAConsent;
 
 // ── Connect bank ───────────────────────────────────────────
 async function connectBank(adapter) {
