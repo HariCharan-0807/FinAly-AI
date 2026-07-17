@@ -1315,11 +1315,9 @@ async function setMonthlyIncome(amount) {
 //  Init
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async () => {
+  document.body.style.opacity = '1';
   const ok = await guardAuth();
   if (!ok) return;
-
-  // Reveal the page now that auth is confirmed (body starts hidden to prevent flash)
-  document.body.style.opacity = '1';
 
   const yearInput = document.getElementById('budget-year');
   if (yearInput) yearInput.value = new Date().getFullYear();
