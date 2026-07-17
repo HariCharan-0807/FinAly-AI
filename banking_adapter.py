@@ -450,16 +450,15 @@ class SetuAAAdapter(BankingAdapterBase):
                 )
             ]
 
-    def get_transactions(self, token_payload: dict,
-                         days: int = 90,
-                         account_id: Optional[str] = None) -> list[dict]:
+    def get_transactions(self, token_payload: dict, account_id: str,
+                         days: int = 90) -> list[dict]:
         vua = token_payload.get("vua", "user@setu-aa")
         fip_bank = token_payload.get("fip_bank", "HDFC Bank")
-        seed = f"txns-{vua}-{fip_bank}-{days}"
+        seed = f"txns-{vua}-{fip_bank}-{account_id}-{days}"
         rng = random.Random(seed)
 
         accounts = self.get_accounts(token_payload)
-        curr_balance = accounts[0]["balance"]
+        curr_balance = accounts[0]["balance"] if accounts else 100000.0
 
         now = datetime.utcnow()
         transactions = []
