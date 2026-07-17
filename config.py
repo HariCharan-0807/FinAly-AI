@@ -38,3 +38,7 @@ SMTP_FROM    = GMAIL_FROM
 
 OTP_EXPIRE_MINUTES         = 10
 RESET_TOKEN_EXPIRE_MINUTES = 10
+
+# ── Gemini AI (Intelligent Chat) ──────────────────────────
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL   = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")

@@ -11,9 +11,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="dashboard.css?v=5.0">
   <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
+  <!-- Instant auth guard — runs synchronously BEFORE any paint -->
+  <script>
+    if (!sessionStorage.getItem('finaly_token')) {
+      window.location.replace('login.html');
+    }
+  </script>
   <script src="dashboard.js?v=5.0" defer></script>
 </head>
-<body>
+<body style="opacity: 0; transition: opacity 0.3s ease;">
 
   <!-- Toast -->
   <div id="toast" class="toast" role="alert" aria-live="polite"></div>
@@ -342,6 +348,10 @@
              Open Bank Project
             <span class="adapter-badge">Free Sandbox</span>
           </button>
+          <button class="adapter-tab" data-adapter="setu" onclick="selectAdapter('setu')">
+            🏦 Setu AA (India)
+            <span class="adapter-badge aa-badge">RBI Regulated</span>
+          </button>
         </div>
 
         <!-- Mock Mode Form -->
@@ -385,8 +395,50 @@
           </button>
         </div>
 
+        <!-- Setu AA (India) Panel -->
+        <div id="adapter-form-setu" class="adapter-form hidden">
+          <div class="bank-info-box aa-info">
+            <strong>🏦 Account Aggregator — RBI Regulated Framework</strong><br>
+            <p style="margin:10px 0 8px;line-height:1.7;font-size:0.86rem;color:var(--text-secondary)">
+              The <strong>Account Aggregator (AA)</strong> framework lets you securely share your bank data
+              with FinAly AI through a <strong>consent-based flow</strong> — your bank credentials are
+              <em>never shared</em> with us.
+            </p>
+            <div class="aa-flow-steps">
+              <div class="aa-step">
+                <span class="aa-step-num">1</span>
+                <span>You click <strong>"Connect Bank"</strong> and enter your mobile number</span>
+              </div>
+              <div class="aa-step">
+                <span class="aa-step-num">2</span>
+                <span>You're redirected to the AA consent screen — <strong>select your bank</strong> and log in directly with your bank</span>
+              </div>
+              <div class="aa-step">
+                <span class="aa-step-num">3</span>
+                <span>Approve what data to share (accounts, transactions) — your choice</span>
+              </div>
+              <div class="aa-step">
+                <span class="aa-step-num">4</span>
+                <span>Accounts &amp; transactions appear in FinAly AI — <strong>automatically categorized</strong></span>
+              </div>
+            </div>
+            <div class="aa-providers">
+              <span class="aa-provider-label">Supported AA Providers:</span>
+              <span class="aa-provider-chip">Setu AA</span>
+              <span class="aa-provider-chip">Finbox</span>
+              <span class="aa-provider-chip">OneMoney</span>
+              <span class="aa-provider-chip">Perfios</span>
+            </div>
+          </div>
+          <div class="aa-coming-soon">
+            <div class="aa-coming-soon-icon">🔒</div>
+            <strong>Coming Soon — Production Integration</strong>
+            <p>AA integration requires FIU registration with RBI. Use <strong>Demo Mode</strong> or <strong>OBP Sandbox</strong> for testing.</p>
+          </div>
+        </div>
+
         <div class="bank-security-note">
-           Bank tokens are encrypted with AES-256 (Fernet) — your credentials never leave the server
+          🔐 Bank tokens are encrypted with AES-256 (Fernet) — your credentials never leave the server
         </div>
       </div>
 
@@ -652,40 +704,40 @@
     <!-- ══ AI CHAT SECTION ════════════════════════════════ -->
     <section id="section-chat" class="section hidden">
       <div class="section-header">
-        <div><h1>AI Finance Assistant</h1><p class="section-sub">Ask anything about your finances — I'm here to help!</p></div>
+        <div><h1>AI Finance Assistant</h1><p class="section-sub">Powered by Google Gemini &mdash; ask anything about your finances and get personalized, data-driven answers</p></div>
       </div>
 
       <div class="chat-container glass-card">
         <div class="chat-header-bar">
           <div class="ai-pulse"></div>
           <span style="font-weight:700;color:var(--text-primary);">FinAly AI</span>
-          <span style="color:var(--text-muted);font-size:12px;">Customer Support &bull; Always Online</span>
+          <span style="color:var(--text-muted);font-size:12px;">Gemini-Powered &bull; Always Online</span>
         </div>
         <div class="chat-display" id="chat-display">
           <div class="chat-message-row bot-row">
             <div class="chat-avatar bot-avatar"></div>
             <div class="chat-bubble bot-bubble">
-               Hey there! I'm <strong>FinAly AI</strong>, your personal finance assistant.<br><br>
-              I can help you with <strong>spending analysis</strong>, <strong>budgets</strong>, <strong>savings goals</strong>, <strong>investments</strong>, and <strong>account support</strong>.<br><br>
-              What would you like to know today?
+               Hey there! I'm <strong>FinAly AI</strong>, your personal finance assistant powered by <strong>Google Gemini</strong>.<br><br>
+              I can analyze your <strong>real financial data</strong> and give you personalized advice on <strong>spending</strong>, <strong>budgets</strong>, <strong>savings goals</strong>, <strong>investments</strong>, and more.<br><br>
+              Try asking me something specific about your money!
             </div>
           </div>
         </div>
         <div class="chat-controls">
           <input type="text" id="chat-input" class="chat-input-field"
-                 placeholder="e.g. 'How much did I spend this month?' or 'Give me savings tips'"
+                 placeholder="e.g. 'Am I overspending on food?' or 'How can I save more?'"
                  onkeydown="if(event.key==='Enter') sendMessage()">
           <button class="chat-send-btn" id="chat-send-btn" onclick="sendMessage()" aria-label="Send message">
             Send 
           </button>
         </div>
         <div class="chat-suggestions">
-          <button class="chip" onclick="askSuggestion(this)"> What's my balance?</button>
-          <button class="chip" onclick="askSuggestion(this)"> How much did I spend?</button>
-          <button class="chip" onclick="askSuggestion(this)"> Help me save more</button>
-          <button class="chip" onclick="askSuggestion(this)"> Should I invest in SIP?</button>
-          <button class="chip" onclick="askSuggestion(this)"> How do I set a budget?</button>
-          <button class="chip" onclick="askSuggestion(this)"> How does MFA work?</button>
+          <button class="chip" onclick="askSuggestion(this)">Am I on track with my budget?</button>
+          <button class="chip" onclick="askSuggestion(this)">Where is most of my money going?</button>
+          <button class="chip" onclick="askSuggestion(this)">How can I save more this month?</button>
+          <button class="chip" onclick="askSuggestion(this)">Analyze my spending patterns</button>
+          <button class="chip" onclick="askSuggestion(this)">Should I start a SIP?</button>
+          <button class="chip" onclick="askSuggestion(this)">What's my savings rate?</button>
         </div>
       </div>
     </section>

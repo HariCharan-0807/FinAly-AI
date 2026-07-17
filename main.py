@@ -1039,60 +1039,261 @@ def delete_savings_goal(
 
 
 # ═══════════════════════════════════════════════════════════
-#  Endpoint: AI Chat — Conversational Customer Support NLP
+#  Endpoint: AI Chat — Gemini-Powered Financial Assistant
 # ═══════════════════════════════════════════════════════════
 
 class _ChatReq(_PydanticBase):
     message: str
 
 
+# ── Gemini client initialisation (lazy, once) ──────────────
+_gemini_client = None
+
+def _get_gemini_client():
+    """Lazy-init the Gemini client. Returns None if no API key."""
+    global _gemini_client
+    if _gemini_client is not None:
+        return _gemini_client
+    from config import GEMINI_API_KEY
+    if not GEMINI_API_KEY:
+        return None
+    try:
+        from google import genai
+        _gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+        return _gemini_client
+    except Exception as e:
+        print(f"[Gemini] Failed to initialize client: {e}")
+        return None
+
+
+def _build_financial_context(db: Session, user_id: int, user_name: str) -> str:
+    """
+    Build a comprehensive snapshot of the user's financial data
+    to inject into the Gemini prompt as context.
+    """
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+
+    # User profile
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    monthly_income = user.monthly_income if user else 0.0
+
+    # All transactions
+    txns = db.query(models.Transaction).filter(
+        models.Transaction.user_id == user_id
+    ).all()
+
+    # Overall totals
+    total_income = sum(t.amount for t in txns if t.transaction_type == "Income")
+    total_expense = sum(t.amount for t in txns if t.transaction_type == "Expense")
+    total_balance = total_income - total_expense
+
+    # Current month breakdown
+    monthly_txns = [
+        t for t in txns
+        if t.date.month == now.month and t.date.year == now.year
+    ]
+    month_income = sum(t.amount for t in monthly_txns if t.transaction_type == "Income")
+    month_expense = sum(t.amount for t in monthly_txns if t.transaction_type == "Expense")
+
+    # Category breakdown (current month expenses)
+    cat_breakdown: dict[str, float] = defaultdict(float)
+    for t in monthly_txns:
+        if t.transaction_type == "Expense":
+            cat_breakdown[t.category] += t.amount
+    sorted_cats = sorted(cat_breakdown.items(), key=lambda x: x[1], reverse=True)
+
+    # Budgets
+    budgets = db.query(models.Budget).filter(
+        models.Budget.user_id == user_id,
+        models.Budget.month == now.month,
+        models.Budget.year == now.year,
+    ).all()
+    budget_lines = []
+    for b in budgets:
+        spent = cat_breakdown.get(b.category, 0.0)
+        pct = round((spent / b.monthly_limit) * 100, 1) if b.monthly_limit > 0 else 0
+        bstatus = "OVER BUDGET" if pct > 100 else ("Near limit" if pct > 80 else "OK")
+        budget_lines.append(
+            f"  - {b.category}: Budget Rs.{b.monthly_limit:,.2f} | Spent Rs.{spent:,.2f} ({pct}%) [{bstatus}]"
+        )
+
+    # Savings goals
+    goals = db.query(models.SavingsGoal).filter(
+        models.SavingsGoal.user_id == user_id
+    ).all()
+    goal_lines = []
+    for g in goals:
+        pct = round((g.current_amount / g.target_amount) * 100, 1) if g.target_amount > 0 else 0
+        deadline_str = f", deadline: {g.deadline}" if g.deadline else ""
+        goal_lines.append(
+            f"  - {g.name}: Rs.{g.current_amount:,.2f} / Rs.{g.target_amount:,.2f} ({pct}%{deadline_str})"
+        )
+
+    # Recent transactions (last 10)
+    recent = sorted(txns, key=lambda t: t.date, reverse=True)[:10]
+    recent_lines = []
+    for t in recent:
+        sign = "+" if t.transaction_type == "Income" else "-"
+        date_str = t.date.strftime("%d %b %Y") if hasattr(t.date, 'strftime') else str(t.date)[:10]
+        desc = t.description or t.category
+        recent_lines.append(f"  - {date_str}: {sign}Rs.{t.amount:,.2f} [{t.category}] {desc}")
+
+    # ML forecast
+    try:
+        from ml_engine import run_classical_ml_analytics
+        ml = run_classical_ml_analytics(db, user_id)
+        forecast = ml.get("forecast")
+        anomalies = ml.get("anomalies", [])
+    except Exception:
+        forecast = None
+        anomalies = []
+
+    forecast_str = ""
+    if forecast:
+        forecast_str = (
+            f"\nSpending Forecast:\n"
+            f"  - Last 30 days actual: Rs.{forecast['last_30d_actual']:,.2f}\n"
+            f"  - Predicted next 30 days: Rs.{forecast['predicted_next_30d_expenses']:,.2f}\n"
+            f"  - Trend: {forecast['expenditure_trend']}"
+        )
+
+    anomaly_str = ""
+    if anomalies:
+        anomaly_lines = [
+            f"  - Rs.{a['amount']:,.2f} on {a['date']} [{a['category']}] — {a['description']} (z-score: {a['z_score']})"
+            for a in anomalies[:3]
+        ]
+        anomaly_str = "\nUnusual Transactions (Anomalies):\n" + "\n".join(anomaly_lines)
+
+    # Savings rate
+    savings_rate_str = ""
+    if monthly_income > 0 and month_expense > 0:
+        rate = ((monthly_income - month_expense) / monthly_income) * 100
+        savings_rate_str = f"\nSavings Rate: {rate:.1f}% (ideal target: 20%+)"
+
+    cat_text = "\n".join(f"  - {cat}: Rs.{amt:,.2f}" for cat, amt in sorted_cats) if sorted_cats else "  (No expenses logged this month)"
+
+    context = (
+        "=== USER FINANCIAL DATA (REAL, LIVE) ===\n"
+        f"Name: {user_name}\n"
+        f"Fixed Monthly Income: Rs.{monthly_income:,.2f}\n"
+        "\nOverall Totals:\n"
+        f"  - Total Income: Rs.{total_income:,.2f}\n"
+        f"  - Total Expenses: Rs.{total_expense:,.2f}\n"
+        f"  - Net Balance: Rs.{total_balance:,.2f}\n"
+        f"\nThis Month ({now.strftime('%B %Y')}):\n"
+        f"  - Income: Rs.{month_income:,.2f}\n"
+        f"  - Expenses: Rs.{month_expense:,.2f}\n"
+        f"  - Net: Rs.{month_income - month_expense:,.2f}"
+        f"{savings_rate_str}\n"
+        f"\nCategory Breakdown (This Month):\n{cat_text}\n"
+        "\nBudgets (This Month):\n"
+        + ("\n".join(budget_lines) if budget_lines else "  (No budgets set)")
+        + "\n\nSavings Goals:\n"
+        + ("\n".join(goal_lines) if goal_lines else "  (No savings goals set)")
+        + "\n\nRecent Transactions (Latest 10):\n"
+        + ("\n".join(recent_lines) if recent_lines else "  (No transactions yet)")
+        + forecast_str
+        + anomaly_str
+        + "\n=== END FINANCIAL DATA ==="
+    )
+
+    return context
+
+
+_SYSTEM_PROMPT = (
+    "You are FinAly AI, an intelligent personal finance assistant built for Indian users. "
+    "You are warm, friendly, and expert in personal finance.\n\n"
+    "CRITICAL RULES:\n"
+    "1. You have access to the user's REAL financial data provided below the message. "
+    "Use their ACTUAL numbers in your responses — never make up figures.\n"
+    "2. Keep responses concise: 2-4 short paragraphs max. Use markdown formatting: "
+    "**bold** for emphasis, bullet points for lists.\n"
+    "3. Always use the Indian Rupee symbol for currency. Format large numbers Indian-style.\n"
+    "4. Give specific, actionable advice based on their data. Don't be generic.\n"
+    "5. If they ask about a feature of the app (budgets, transactions, savings goals, etc.), "
+    "explain how to use it in FinAly AI.\n"
+    "6. If their question is completely unrelated to finance or the app, politely redirect.\n"
+    "7. Reference their specific categories, amounts, and goals by name when relevant.\n"
+    "8. If they have anomalies or are over budget, proactively mention it.\n"
+    "9. Be encouraging, not judgmental about spending habits.\n"
+    "10. For investment advice, always add a disclaimer that this is educational, not SEBI-registered advice.\n\n"
+    "ABOUT FINALY AI (the app):\n"
+    "- Dashboard: Shows balance, income, expenses, charts (daily/weekly/monthly), AI insights\n"
+    "- Transactions: Add/delete income and expense entries with categories\n"
+    "- Budgets: Set monthly spending limits per category (Food, Transport, etc.)\n"
+    "- Savings: Create goals with target amounts and deadlines, track progress\n"
+    "- Bank: Connect bank accounts (Demo mode or Open Bank Project sandbox)\n"
+    "- Export: Download transaction data as Excel or PDF reports\n"
+    "- AI Chat: This is you! You answer questions about their finances.\n"
+    "- Security: JWT auth + TOTP MFA (Google Authenticator)"
+)
+
+
+async def _ask_gemini(message: str, financial_context: str) -> Optional[str]:
+    """
+    Send the user's message + financial context to Gemini.
+    Returns the response text, or None if Gemini is unavailable.
+    """
+    client = _get_gemini_client()
+    if not client:
+        return None
+
+    from config import GEMINI_MODEL
+
+    try:
+        full_prompt = f"{financial_context}\n\nUser message: {message}"
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=full_prompt,
+            config={
+                "system_instruction": _SYSTEM_PROMPT,
+                "temperature": 0.7,
+                "max_output_tokens": 800,
+            },
+        )
+
+        if response and response.text:
+            return response.text.strip()
+        return None
+
+    except Exception as e:
+        print(f"[Gemini] API error: {e}")
+        return None
+
+
+# ── Fallback: Original keyword-matching engine ─────────────
 def _match(msg: str, keywords: list) -> bool:
     """True if ANY keyword/phrase appears in the message."""
     return any(kw in msg for kw in keywords)
 
 
-def _generate_reply(msg: str, name: str, db, user_id: int) -> str:
-    """Multi-intent conversational NLP engine for FinAly AI customer support."""
+def _generate_reply_fallback(msg: str, name: str, db, user_id: int) -> str:
+    """Original keyword engine — used as fallback when Gemini is unavailable."""
     first = name.split()[0] if name else "there"
 
-    # ── Greetings ──────────────────────────────────────────────────────────
     if _match(msg, ["hello", "hi ", "hi!", "hey", "howdy", "good morning",
                     "good afternoon", "good evening", "greetings", "sup", "yo "]):
         return (
-            f"Hey {first}!  Great to see you here! I'm **FinAly AI**, your personal "
+            f"Hey {first}! I'm **FinAly AI**, your personal "
             "finance assistant. I can help you with:\n\n"
-            "•  **Spending & expenses** — track and analyse where your money goes\n"
-            "•  **Budgets** — set monthly limits by category\n"
-            "•  **Savings goals** — plan and hit your financial milestones\n"
-            "•  **Investment tips** — SIPs, index funds, and more\n"
-            "•  **Account & security** — MFA, passwords, and profile settings\n\n"
+            "• **Spending & expenses** — track and analyse where your money goes\n"
+            "• **Budgets** — set monthly limits by category\n"
+            "• **Savings goals** — plan and hit your financial milestones\n"
+            "• **Investment tips** — SIPs, index funds, and more\n"
+            "• **Account & security** — MFA, passwords, and profile settings\n\n"
             "What would you like help with today?"
         )
 
-    # ── Thanks / Appreciation ──────────────────────────────────────────────
     if _match(msg, ["thank", "thanks", "awesome", "great", "perfect", "helpful",
                     "nice", "good job", "well done", "cheers"]):
         return (
-            f"You're very welcome, {first}!  That's what I'm here for. "
+            f"You're very welcome, {first}! That's what I'm here for. "
             "Is there anything else I can help you with today?"
         )
 
-    # ── Who are you / About the app ────────────────────────────────────────
-    if _match(msg, ["who are you", "what are you", "what is finaly", "about finaly",
-                    "what can you do", "how do you work", "tell me about", "your features",
-                    "what do you offer"]):
-        return (
-            "I'm **FinAly AI** — your all-in-one personal finance assistant! \n\n"
-            "Here's everything I can help you with:\n\n"
-            " **Dashboard** — Real-time view of your balance, income & expenses\n"
-            " **Transactions** — Log income and expenses with categories\n"
-            " **Budgets** — Set monthly spending limits per category\n"
-            " **Savings Goals** — Track your financial targets\n"
-            " **AI Chat** — That's me! Ask me anything finance-related\n\n"
-            "Your data is protected with JWT authentication + MFA. You're in safe hands! "
-        )
-
-    # ── Balance / Net Worth ────────────────────────────────────────────────
     if _match(msg, ["balance", "net worth", "total money", "how much do i have",
                     "how much money", "my money", "account balance"]):
         try:
@@ -1103,36 +1304,16 @@ def _generate_reply(msg: str, name: str, db, user_id: int) -> str:
             expense_total = sum(t.amount for t in txns if t.transaction_type == "Expense")
             balance = income_total - expense_total
             sign = "positive" if balance >= 0 else "negative"
-            emoji = "" if balance >= 0 else "️"
             return (
-                f"{emoji} Your current **Total Balance** is **₹{balance:,.2f}** ({sign}).\n\n"
-                f" Total Income recorded: ₹{income_total:,.2f}\n"
-                f" Total Expenses recorded: ₹{expense_total:,.2f}\n\n"
-                "Head to your **Dashboard** tab for a live animated view. "
-                "Want tips on improving your balance?"
+                f"Your current **Total Balance** is **₹{balance:,.2f}** ({sign}).\n\n"
+                f"Total Income recorded: ₹{income_total:,.2f}\n"
+                f"Total Expenses recorded: ₹{expense_total:,.2f}\n\n"
+                "Head to your **Dashboard** tab for a live animated view."
             )
         except Exception:
             pass
-        return (
-            "Your **Total Balance** lives right on the Dashboard — it's calculated as "
-            "all your recorded income minus all expenses. "
-            "Head to the **Dashboard** tab to see it with animated charts! "
-        )
+        return "Head to the **Dashboard** tab to see your balance with animated charts!"
 
-    # ── Income ─────────────────────────────────────────────────────────────
-    if _match(msg, ["income", "salary", "earnings", "how much i earn", "monthly income",
-                    "set income", "add income", "paycheck"]):
-        return (
-            " **Monthly Income** in FinAly AI works in two ways:\n\n"
-            "1. **Fixed Monthly Income** — Set this once via the *Edit* link on the Dashboard's "
-            "Monthly Income card. This is used for budget planning.\n"
-            "2. **Income Transactions** — You can also log one-time income entries "
-            "(freelance, bonus, etc.) in the **Transactions** tab by selecting type = *Income*.\n\n"
-            "To update your fixed income: go to **Dashboard → Monthly Income card → click Edit**. "
-            "Need help with anything else?"
-        )
-
-    # ── Expenses / Spending ────────────────────────────────────────────────
     if _match(msg, ["expense", "spent", "spend", "spending", "how much did i",
                     "where did my money", "food", "rent", "transport", "utilities",
                     "entertainment", "shopping", "healthcare", "education"]):
@@ -1153,244 +1334,50 @@ def _generate_reply(msg: str, name: str, db, user_id: int) -> str:
                 [f"  • **{cat}**: ₹{amt:,.2f}" for cat, amt in top_cats]
             ) if top_cats else "  (No expenses logged this month yet)"
             return (
-                f" Here's your **spending summary for this month**:\n\n"
-                f" Total spent: **₹{total_month:,.2f}**\n\n"
-                f" Top categories:\n{top_str}\n\n"
-                " *Tip: Use the **Dashboard** charts to see daily, weekly, and monthly trends. "
-                "Set a **Budget** to stay on track!*"
+                f"Here's your **spending summary for this month**:\n\n"
+                f"Total spent: **₹{total_month:,.2f}**\n\n"
+                f"Top categories:\n{top_str}\n\n"
+                "*Tip: Use the **Dashboard** charts to see trends. Set a **Budget** to stay on track!*"
             )
         except Exception:
             pass
         return (
-            " You can track your expenses in the **Transactions** tab — every expense is "
-            "categorised (Food, Rent, Transport, etc.).\n\n"
-            "The **Dashboard** shows you a real-time category breakdown donut chart and "
+            "You can track your expenses in the **Transactions** tab.\n\n"
+            "The **Dashboard** shows a real-time category breakdown donut chart and "
             "spending trend charts. Set a **Budget** to cap monthly spending per category!"
         )
 
-    # ── Transactions ───────────────────────────────────────────────────────
-    if _match(msg, ["transaction", "add transaction", "log transaction", "record expense",
-                    "record income", "delete transaction", "how to add", "log a payment"]):
-        return (
-            " **Managing Transactions** is easy:\n\n"
-            "** To Add:**\n"
-            "1. Go to the **Transactions** tab in the navbar\n"
-            "2. Select *Type* (Income or Expense)\n"
-            "3. Enter the *Amount* and pick a *Category*\n"
-            "4. Add an optional *Description* (e.g. 'Netflix subscription')\n"
-            "5. Hit **Add Transaction** — done! \n\n"
-            "**️ To Delete:** Click the **** button on any transaction row.\n\n"
-            "All transactions feed into your Dashboard charts and budget tracking in real time!"
-        )
-
-    # ── Budgets ────────────────────────────────────────────────────────────
-    if _match(msg, ["budget", "overspend", "spending limit", "limit", "over budget",
-                    "monthly limit", "create budget", "set budget", "edit budget"]):
-        return (
-            " **Budgets** help you stay in control of your spending!\n\n"
-            "**To create a budget:**\n"
-            "1. Go to the **Budgets** tab\n"
-            "2. Pick a *Category* (e.g. Food, Shopping)\n"
-            "3. Set your *Monthly Limit* in ₹\n"
-            "4. Select the *Month* and *Year*\n"
-            "5. Click **Create Budget** — FinAly AI will track it automatically!\n\n"
-            " **Over budget** — you'll see a warning when you exceed the limit\n"
-            " **Near limit** — a caution shows when you're at 80%+ of your budget\n\n"
-            "*Pro tip: Create separate budgets for Food, Entertainment, and Shopping "
-            "to spot where you overspend most!*"
-        )
-
-    # ── Savings Goals ──────────────────────────────────────────────────────
-    if _match(msg, ["saving", "savings", "goal", "target", "emergency fund", "dream",
-                    "milestone", "save for", "how to save", "set a goal"]):
-        return (
-            " **Savings Goals** keep you motivated and on track!\n\n"
-            "**To create a goal:**\n"
-            "1. Go to the **Savings** tab\n"
-            "2. Give it a name (e.g. *Emergency Fund*, *New Laptop*, *Vacation*)\n"
-            "3. Set your *Target Amount* and how much you've *already saved*\n"
-            "4. Optionally set a *Deadline*\n"
-            "5. Click **Add Goal** — a progress bar will track your journey!\n\n"
-            " **The 50/30/20 Rule:**\n"
-            "  • 50% of income → Needs (rent, food, utilities)\n"
-            "  • 30% → Wants (entertainment, dining)\n"
-            "  • 20% → Savings & investments\n\n"
-            "Would you like tips on reaching your savings goal faster? "
-        )
-
-    # ── How to save more ───────────────────────────────────────────────────
-    if _match(msg, ["save more", "more money", "cut costs", "reduce spending",
-                    "save money", "frugal", "tip", "advice", "recommend"]):
-        return (
-            " Here are **proven strategies to boost your savings rate**:\n\n"
-            "1.  **Analyze Your Top Outflows** — Check your Dashboard category donut chart to identify your top spending area and set a 15% reduction target.\n"
-            "2.  **Pay Yourself First** — Schedule an automatic bank transfer to your savings or investment account on payday *before* discretionary spending.\n"
-            "3.  **Audit Recurring Subscriptions** — Review fixed recurring deductions (OTT, gym, SaaS tools) quarterly to eliminate unused services.\n"
-            "4.  **Implement the 48-Hour Rule** — Wait 48 hours before making non-essential purchases over ₹1,000 to prevent impulse buying.\n"
-            "5.  **Start a Mutual Fund SIP** — Even ₹1,000/month invested in an index fund compounds significantly over a 5 to 10 year horizon.\n"
-            "6.  **Log Every Transaction** — Consistent tracking builds awareness and naturally reduces unnecessary outflows by 10–15%.\n\n"
-            "Check out your **AI Savings Insights** on the Dashboard for recommendations tailored to your exact transaction history! "
-        )
-
-    # ── Investments / SIP ──────────────────────────────────────────────────
-    if _match(msg, ["invest", "sip", "mutual fund", "stock", "return", "portfolio",
-                    "nifty", "sensex", "equity", "index fund", "fd", "fixed deposit",
-                    "ppf", "elss", "wealth", "grow money"]):
-        return (
-            " **Smart Investing Tips for 2026:**\n\n"
-            "** SIP (Systematic Investment Plan)**\n"
-            "Invest a fixed amount monthly into a mutual fund. Even ₹500/month at "
-            "12% avg. returns = **₹1 lakh+ in 8 years** thanks to compounding!\n\n"
-            "** Index Funds** (Beginner-friendly)\n"
-            "  • Nifty 50 index funds — low cost, market-matching returns (~11% CAGR)\n"
-            "  • Set it and forget it — perfect for long-term wealth building\n\n"
-            "** Tax-saving Options:**\n"
-            "  • **ELSS** — Save tax under 80C + potential 12-15% returns\n"
-            "  • **PPF** — Safe, government-backed, 7.1% tax-free returns\n\n"
-            "**️ Golden Rules:**\n"
-            "  • Start early — time in market > timing the market\n"
-            "  • Never invest money you can't afford to keep for 3+ years\n"
-            "  • Diversify across equity, debt, and gold\n\n"
-            "*Note: This is educational info, not personalised financial advice. "
-            "Consult a SEBI-registered advisor for your portfolio.*"
-        )
-
-    # ── Password / Security ────────────────────────────────────────────────
-    if _match(msg, ["password", "change password", "forgot password", "reset password",
-                    "login issue", "can't login", "cannot login", "locked out",
-                    "account locked"]):
-        return (
-            " **Account & Password Help:**\n\n"
-            "**Forgot your password?**\n"
-            "Currently, password reset is managed by your admin. Please reach out to "
-            "your account administrator to reset your credentials.\n\n"
-            "**Account locked?**\n"
-            "After **5 failed login attempts**, your account is temporarily locked "
-            "for security. It automatically unlocks after a few minutes. "
-            "Wait a bit and try again!\n\n"
-            "**Password requirements:**\n"
-            "  • At least 8 characters\n"
-            "  • One uppercase letter (A-Z)\n"
-            "  • One lowercase letter (a-z)\n"
-            "  • One digit (0-9)\n"
-            "  • One special character (!@#$%...)\n\n"
-            "Still having trouble? Describe your issue and I'll do my best to help! "
-        )
-
-    # ── MFA / Two-Factor Auth ──────────────────────────────────────────────
-    if _match(msg, ["mfa", "2fa", "two factor", "two-factor", "authenticator",
-                    "otp", "totp", "qr code", "google authenticator", "setup mfa",
-                    "enable mfa", "security code"]):
-        return (
-            "️ **Multi-Factor Authentication (MFA) — How It Works:**\n\n"
-            "FinAly AI uses **TOTP-based 2FA** (the same technology as Google Authenticator) "
-            "to keep your account ultra-secure.\n\n"
-            "**To set up MFA:**\n"
-            "1. After logging in, you'll be prompted to scan a **QR code**\n"
-            "2. Open **Google Authenticator**, **Authy**, or any TOTP app\n"
-            "3. Scan the QR code to link your account\n"
-            "4. Enter the **6-digit code** shown in the app to verify\n"
-            "5. MFA is now active — every login will require this code! \n\n"
-            "**Lost access to your authenticator?**\n"
-            "Contact your administrator to reset your MFA secret.\n\n"
-            "*Having MFA on is strongly recommended — it prevents unauthorised access "
-            "even if your password is compromised!* "
-        )
-
-    # ── Navigation / How to use ────────────────────────────────────────────
-    if _match(msg, ["how to use", "navigate", "where is", "how do i find", "getting started",
-                    "tutorial", "guide", "help me", "show me how", "how to"]):
-        return (
-            "️ **Quick Navigation Guide for FinAly AI:**\n\n"
-            "** Dashboard** — Your financial overview: balance, income, expenses, "
-            "savings progress, and trend charts. Loads on login.\n\n"
-            "** Transactions** — Add or delete income/expense entries. Each entry "
-            "has a category, amount, and optional description.\n\n"
-            "** Budgets** — Create per-category monthly spending limits. FinAly AI "
-            "automatically tracks how much you've spent vs. your limit.\n\n"
-            "** Savings** — Set financial goals and track progress with a visual "
-            "progress bar. Add a deadline to stay motivated!\n\n"
-            "** AI Chat** — That's right here! Ask me anything, anytime.\n\n"
-            "*Top tip: Start by setting your **Monthly Income** on the Dashboard, "
-            "then add your first few transactions!* "
-        )
-
-    # ── Logout / Session ───────────────────────────────────────────────────
-    if _match(msg, ["logout", "log out", "sign out", "session", "exit", "quit app"]):
-        return (
-            " To **log out** of FinAly AI, click the **Log Out** button in the "
-            "top-right corner of the navbar.\n\n"
-            "Your session uses secure JWT tokens with automatic refresh — so you stay "
-            "logged in safely without re-entering your password too often.\n\n"
-            "*Always log out on shared or public devices to keep your data safe!* "
-        )
-
-    # ── Report / Summary ───────────────────────────────────────────────────
-    if _match(msg, ["report", "summary", "monthly report", "weekly report", "analysis",
-                    "breakdown", "chart", "graph", "statistics", "stats"]):
-        return (
-            " **Your Financial Reports — All on the Dashboard!**\n\n"
-            "Switch between views using the chart toggle buttons:\n"
-            "  • **Daily** — Spending for each day of the current week (Mon–Sun)\n"
-            "  • **Weekly** — Spending across the 4 weeks of this month\n"
-            "  • **Monthly** — Last 6 months of expenses (trend view)\n\n"
-            "You'll also see a **Category Breakdown** donut chart showing exactly "
-            "what percentage goes to Food, Rent, Transport, etc.\n\n"
-            " *Tip: Look for your biggest spending category and set a Budget there first!*"
-        )
-
-    # ── App issue / Bug report ─────────────────────────────────────────────
-    if _match(msg, ["bug", "error", "not working", "broken", "issue", "problem",
-                    "glitch", "crash", "doesn't work", "does not work", "failed"]):
-        return (
-            " I'm sorry to hear you're running into an issue! Let me help.\n\n"
-            "**Common fixes:**\n"
-            " **Refresh the page** — resolves most temporary glitches\n"
-            " **Check your connection** — the backend server must be running\n"
-            " **Try logging out and back in** — refreshes your session tokens\n"
-            " **Clear browser cache** — Ctrl+Shift+R (or Cmd+Shift+R on Mac)\n\n"
-            "**If the problem persists**, please describe exactly what you were doing "
-            "when it happened — I'll do my best to guide you through it! ️"
-        )
-
-    # ── Positive affirmations / Motivation ─────────────────────────────────
-    if _match(msg, ["motivate", "encourage", "i'm struggling", "hard to save",
-                    "can't save", "broke", "no money", "stressed", "worried about"]):
-        return (
-            f"Hey {first}, I hear you — managing money can feel overwhelming sometimes. "
-            "But you're already ahead of most people just by **tracking your finances**! \n\n"
-            "Here's what I'd suggest:\n"
-            "1. **Don't aim for perfection** — even saving ₹100/day adds up to ₹36,500/year\n"
-            "2. **Focus on one thing** — pick just ONE expense to cut this week\n"
-            "3. **Celebrate small wins** — every goal you hit matters\n\n"
-            "You've got this! What's one small change you'd like to make? I'm here to help. "
-        )
-
-    # ── Fallback: smart, contextual default ───────────────────────────────
     return (
-        f"Hi {first}!  I'm not quite sure I understood that, but I'm here to help!\n\n"
+        f"Hi {first}! I'm not quite sure I understood that, but I'm here to help!\n\n"
         "Here are some things you can ask me:\n"
         "  • *\"What's my total balance?\"*\n"
         "  • *\"How much did I spend this month?\"*\n"
         "  • *\"How do I set up a budget?\"*\n"
         "  • *\"Give me savings tips\"*\n"
-        "  • *\"How does MFA work?\"*\n"
         "  • *\"Should I invest in SIP?\"*\n\n"
-        "Just type naturally — I'll do my best to understand! "
+        "Just type naturally — I'll do my best to understand!"
     )
 
 
 @app.post("/api/chat")
-def chat(
+async def chat(
     body: _ChatReq,
     current_user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    msg = body.message.lower().strip()
+    msg = body.message.strip()
     if not msg:
-        return {"reply": "Go ahead, ask me anything! "}
+        return {"reply": "Go ahead, ask me anything!"}
 
-    reply = _generate_reply(msg, current_user.full_name, db, current_user.id)
+    # Try Gemini first (intelligent, data-aware)
+    financial_context = _build_financial_context(db, current_user.id, current_user.full_name)
+    gemini_reply = await _ask_gemini(msg, financial_context)
+
+    if gemini_reply:
+        return {"reply": gemini_reply}
+
+    # Fallback to keyword engine
+    reply = _generate_reply_fallback(msg.lower(), current_user.full_name, db, current_user.id)
     return {"reply": reply}
 
 

@@ -1432,6 +1432,99 @@ input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; }
   opacity: 0.7;
 }
 
+/* AA Badge & Info Styles */
+.aa-badge {
+  background: linear-gradient(135deg, #059669, #10b981) !important;
+  color: #fff !important;
+}
+
+.aa-info {
+  border-left-color: #10b981 !important;
+}
+
+.aa-flow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 16px;
+}
+
+.aa-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.86rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.aa-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #059669, #10b981);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.78rem;
+}
+
+.aa-providers {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.aa-provider-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.aa-provider-chip {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.aa-coming-soon {
+  text-align: center;
+  padding: 24px 16px;
+  margin-top: 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+}
+
+.aa-coming-soon-icon {
+  font-size: 2rem;
+  margin-bottom: 8px;
+}
+
+.aa-coming-soon strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+
+.aa-coming-soon p {
+  font-size: 0.82rem;
+  margin: 0;
+  color: var(--text-muted);
+}
+
 /* Account cards grid */
 .bank-accounts-grid {
   display: grid;
