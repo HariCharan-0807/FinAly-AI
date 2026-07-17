@@ -1633,6 +1633,12 @@ def bank_connect(
             "password":     payload.password,
             "consumer_key": payload.consumer_key or "",
         }
+    elif payload.adapter == "setu":
+        creds = {
+            "vua":        payload.vua or payload.username or "user@setu-aa",
+            "fip_bank":   payload.fip_bank or "HDFC Bank",
+            "consent_id": payload.consent_id or "",
+        }
 
     # Authenticate
     try:
@@ -1651,10 +1657,12 @@ def bank_connect(
     from security import encrypt_secret
     encrypted = encrypt_secret(_json.dumps(token_payload))
 
-    bank_label = (
-        "Demo Bank (Mock Mode)" if payload.adapter == "mock"
-        else f"OBP Sandbox ({payload.username})"
-    )
+    if payload.adapter == "mock":
+        bank_label = "Demo Bank (Mock Mode)"
+    elif payload.adapter == "obp":
+        bank_label = f"OBP Sandbox ({payload.username})"
+    else:
+        bank_label = f"Setu AA ({creds.get('fip_bank', 'HDFC Bank')})"
 
     link = models.LinkedBank(
         user_id         = current_user.id,

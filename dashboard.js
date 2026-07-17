@@ -1421,14 +1421,53 @@ function selectAdapter(type) {
     f.classList.toggle('hidden', !f.id.endsWith(type)));
 }
 
+// ── Setu AA Interactive Consent Flow ─────────────────────────
+function initiateSetuAAConsent() {
+  const vua = (document.getElementById('setu-vua') || {}).value?.trim() || '9876543210@setu';
+  const fipBank = (document.getElementById('setu-fip-bank') || {}).value || 'HDFC Bank';
+
+  if (!vua.includes('@') && !/^\d{10}$/.test(vua)) {
+    showToast('️ Please enter a valid 10-digit mobile number or Virtual User Address (e.g. 9876543210@setu)', 'warning', 5000);
+    return;
+  }
+
+  const modalVua = document.getElementById('aa-modal-vua');
+  const modalBank = document.getElementById('aa-modal-bank');
+  if (modalVua) modalVua.textContent = vua;
+  if (modalBank) modalBank.textContent = fipBank;
+
+  const modal = document.getElementById('setu-consent-modal');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeSetuAAModal() {
+  const modal = document.getElementById('setu-consent-modal');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function approveSetuAAConsent() {
+  const otpInput = document.getElementById('setu-otp-code');
+  if (!otpInput || otpInput.value.trim().length !== 6) {
+    showToast('️ Please enter the 6-digit consent verification OTP.', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('setu-approve-btn');
+  if (btn) btn.disabled = true;
+
+  await connectBank('setu');
+
+  if (btn) btn.disabled = false;
+  closeSetuAAModal();
+}
+
 // ── Connect bank ───────────────────────────────────────────
 async function connectBank(adapter) {
-  const btnId   = adapter === 'mock' ? 'mock-connect-btn' : 'obp-connect-btn';
+  const btnId = adapter === 'mock' ? 'mock-connect-btn' : (adapter === 'setu' ? 'setu-initiate-btn' : 'obp-connect-btn');
   const btn     = document.getElementById(btnId);
-  if (!btn) return;
-  const text    = btn.querySelector('.btn-text');
-  const spinner = btn.querySelector('.btn-spinner');
-  btn.disabled  = true;
+  const text    = btn ? btn.querySelector('.btn-text') : null;
+  const spinner = btn ? btn.querySelector('.btn-spinner') : null;
+  if (btn) btn.disabled = true;
   if (spinner) spinner.classList.remove('hidden');
   if (text)    text.textContent = 'Connecting…';
 
@@ -1439,11 +1478,15 @@ async function connectBank(adapter) {
     body.consumer_key = (document.getElementById('obp-consumer-key') || {}).value?.trim() || '';
     if (!body.username || !body.password || !body.consumer_key) {
       showToast('️ Please enter your OBP username, password, and Consumer Key.', 'warning');
-      btn.disabled = false;
+      if (btn) btn.disabled = false;
       if (spinner) spinner.classList.add('hidden');
       if (text)    text.textContent = 'Connect OBP Sandbox';
       return;
     }
+  } else if (adapter === 'setu') {
+    body.vua = (document.getElementById('setu-vua') || {}).value?.trim() || '9876543210@setu';
+    body.fip_bank = (document.getElementById('setu-fip-bank') || {}).value || 'HDFC Bank';
+    body.consent_id = 'SETU-AA-' + Math.floor(100000 + Math.random() * 900000);
   }
 
   try {
@@ -1459,10 +1502,10 @@ async function connectBank(adapter) {
     console.error('Bank connect error:', err);
     showToast(` ${err.message}`, 'error', 7000);
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
     if (spinner) spinner.classList.add('hidden');
     if (text)    text.textContent =
-      adapter === 'mock' ? 'Connect Demo Bank' : 'Connect OBP Sandbox';
+      adapter === 'mock' ? 'Connect Demo Bank' : (adapter === 'setu' ? 'Initiate AA Consent Flow →' : 'Connect OBP Sandbox');
   }
 }
 

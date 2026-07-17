@@ -316,13 +316,17 @@ class BankImportLogResponse(BaseModel):
 
 class BankConnectRequest(BaseModel):
     """POST /api/bank/connect — link a bank via adapter."""
-    adapter: Literal["mock", "obp"] = "mock"
+    adapter: Literal["mock", "obp", "setu"] = "mock"
     # For mock: any username works (no auth)
     # For obp:  username + password for OBP sandbox account
+    # For setu: vua, fip_bank, and consent_id
     username: Optional[str] = None
     password: Optional[str] = None
-    consumer_key: Optional[str] = None    # OBP consumer key (optional, uses public demo key)
+    consumer_key: Optional[str] = None    # OBP consumer key
     mock_seed: Optional[str] = None       # deterministic seed for mock data
+    vua: Optional[str] = None             # Setu AA Virtual User Address
+    fip_bank: Optional[str] = None        # Selected FIP Bank
+    consent_id: Optional[str] = None      # AA Consent ID
 
 
 class BankAccountOut(BaseModel):

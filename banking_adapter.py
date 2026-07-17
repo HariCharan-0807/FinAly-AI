@@ -337,6 +337,171 @@ class OBPAdapter(BankingAdapterBase):
 
 
 # ══════════════════════════════════════════════════════════════
+#  Setu Account Aggregator (AA) India Adapter
+#  RBI-regulated Consent Framework Simulator
+# ══════════════════════════════════════════════════════════════
+
+class SetuAAAdapter(BankingAdapterBase):
+    """
+    Simulates India's Account Aggregator (Sahamati/Setu AA) consent flow.
+    Generates rich, high-fidelity Indian banking data linked via verifiable
+    AA Consent Artifacts (VUA, FIP Bank selection, Consent IDs).
+    """
+
+    adapter_name = "setu"
+
+    _SETU_EXPENSE_TEMPLATES = [
+        ("UPI-Swiggy Instamart-Food",          "Food",          (180, 950)),
+        ("UPI-Zomato Gold-Delivery",           "Food",          (150, 750)),
+        ("NEFT-Rent Payment-NoBroker",         "Rent",          (12000, 28000)),
+        ("UPI-Zerodha Broking SIP",            "Other",         (2000, 10000)),
+        ("UPI-Groww Mutual Fund SIP",          "Other",         (1500, 8000)),
+        ("ACH-BESCOM Electricity Bill",        "Utilities",     (900, 3200)),
+        ("UPI-Airtel Xstream Fiber",           "Utilities",     (899, 1499)),
+        ("POS-DMart Supermarket-Retail",       "Food",          (1200, 4500)),
+        ("UPI-Uber India Cabs",                "Transport",     (120, 550)),
+        ("UPI-IRCTC e-Ticketing",              "Transport",     (650, 3200)),
+        ("POS-Apollo Pharmacy Retail",         "Healthcare",    (350, 2400)),
+        ("UPI-Amazon India Prime & Order",     "Shopping",      (499, 4500)),
+        ("UPI-Myntra Designs-Fashion",         "Shopping",      (800, 3800)),
+        ("UPI-BookMyShow Movie Booking",       "Entertainment", (350, 950)),
+        ("UPI-Netflix India Subscription",     "Entertainment", (499, 649)),
+        ("POS-Indian Oil Petrol Bunk",         "Transport",     (1000, 3500)),
+    ]
+
+    _SETU_INCOME_TEMPLATES = [
+        ("ACH-Salary Credit-Infosys Ltd",      (65000, 160000)),
+        ("NEFT-Freelance Payout-Upwork India", (15000, 55000)),
+        ("INT-Savings A/c Quarterly Interest", (450,   3500)),
+        ("DIV-Dividend Payout-TCS Ltd",        (1200,  8500)),
+        ("UPI-Rent Deposit Received",          (12000, 25000)),
+    ]
+
+    def authenticate(self, credentials: dict) -> dict:
+        vua = credentials.get("vua") or credentials.get("username") or "user@setu-aa"
+        fip_bank = credentials.get("fip_bank") or "HDFC Bank"
+        consent_id = credentials.get("consent_id") or f"SETU-AA-{random.randint(100000, 999999)}"
+        return {
+            "adapter":    "setu",
+            "user_id":    vua,
+            "vua":        vua,
+            "fip_bank":   fip_bank,
+            "consent_id": consent_id,
+            "status":     "CONSENT_ACTIVE",
+            "linked_at":  datetime.utcnow().isoformat(),
+        }
+
+    def get_accounts(self, token_payload: dict) -> list[dict]:
+        vua = token_payload.get("vua", "user@setu-aa")
+        fip_bank = token_payload.get("fip_bank", "HDFC Bank")
+        seed = f"{vua}-{fip_bank}"
+        rng = random.Random(seed)
+
+        if "hdfc" in fip_bank.lower():
+            acct_num = rng.randint(10000000, 99999999)
+            return [
+                _make_account(
+                    account_id  = f"SETU-HDFC-{acct_num}",
+                    bank_name   = "HDFC Bank (Setu AA)",
+                    acct_type   = "Savings Account",
+                    balance     = round(rng.uniform(65000, 320000), 2),
+                ),
+                _make_account(
+                    account_id  = f"SETU-HDFCCC-{rng.randint(1000, 9999)}",
+                    bank_name   = "HDFC Regalia Credit Card (Setu AA)",
+                    acct_type   = "Credit Card",
+                    balance     = -round(rng.uniform(15000, 48000), 2),
+                )
+            ]
+        elif "sbi" in fip_bank.lower() or "state bank" in fip_bank.lower():
+            acct_num = rng.randint(1000000000, 9999999999)
+            return [
+                _make_account(
+                    account_id  = f"SETU-SBI-{acct_num}",
+                    bank_name   = "State Bank of India (Setu AA)",
+                    acct_type   = "Salary / Savings Account",
+                    balance     = round(rng.uniform(50000, 290000), 2),
+                )
+            ]
+        elif "icici" in fip_bank.lower():
+            acct_num = rng.randint(10000000, 99999999)
+            return [
+                _make_account(
+                    account_id  = f"SETU-ICICI-{acct_num}",
+                    bank_name   = "ICICI Bank (Setu AA)",
+                    acct_type   = "Wealth Savings Account",
+                    balance     = round(rng.uniform(75000, 380000), 2),
+                ),
+                _make_account(
+                    account_id  = f"SETU-ICICICC-{rng.randint(1000, 9999)}",
+                    bank_name   = "ICICI Amazon Pay CC (Setu AA)",
+                    acct_type   = "Credit Card",
+                    balance     = -round(rng.uniform(8000, 35000), 2),
+                )
+            ]
+        else:
+            acct_num = rng.randint(10000000, 99999999)
+            return [
+                _make_account(
+                    account_id  = f"SETU-AXIS-{acct_num}",
+                    bank_name   = f"{fip_bank} (Setu AA)",
+                    acct_type   = "Savings Account",
+                    balance     = round(rng.uniform(55000, 260000), 2),
+                )
+            ]
+
+    def get_transactions(self, token_payload: dict,
+                         days: int = 90,
+                         account_id: Optional[str] = None) -> list[dict]:
+        vua = token_payload.get("vua", "user@setu-aa")
+        fip_bank = token_payload.get("fip_bank", "HDFC Bank")
+        seed = f"txns-{vua}-{fip_bank}-{days}"
+        rng = random.Random(seed)
+
+        accounts = self.get_accounts(token_payload)
+        curr_balance = accounts[0]["balance"]
+
+        now = datetime.utcnow()
+        transactions = []
+        count = min(max(days // 2, 25), 60)
+
+        for i in range(count):
+            days_ago = rng.randint(0, days)
+            t_date = (now - timedelta(days=days_ago)).strftime("%Y-%m-%d")
+            t_id = f"SETU-TXN-{rng.randint(100000, 999999)}"
+
+            is_salary = (i % 8 == 0)
+            if is_salary:
+                desc, amount_range = rng.choice(self._SETU_INCOME_TEMPLATES)
+                amount = round(rng.uniform(*amount_range), 2)
+                txn_type = "Income"
+                category = "Income"
+            else:
+                desc, category, amount_range = rng.choice(self._SETU_EXPENSE_TEMPLATES)
+                amount = -round(rng.uniform(*amount_range), 2)
+                txn_type = "Expense"
+
+            transactions.append(
+                _make_txn(
+                    txn_id=t_id,
+                    date=t_date,
+                    description=f"[{fip_bank[:4].upper()}-AA] {desc}",
+                    amount=amount,
+                    txn_type=txn_type,
+                    category=category,
+                    balance_after=curr_balance,
+                )
+            )
+            curr_balance = round(curr_balance - amount, 2)
+
+        transactions.sort(key=lambda x: x["date"], reverse=True)
+        return transactions
+
+    def disconnect(self, token_payload: dict) -> bool:
+        return True
+
+
+# ══════════════════════════════════════════════════════════════
 #  Category guesser (used by OBP adapter for raw descriptions)
 # ══════════════════════════════════════════════════════════════
 
@@ -375,6 +540,7 @@ def _guess_category(description: str) -> str:
 _ADAPTERS: dict[str, BankingAdapterBase] = {
     "mock": MockBankAdapter(),
     "obp":  OBPAdapter(),
+    "setu": SetuAAAdapter(),
 }
 
 def get_banking_adapter(adapter_type: str = "mock") -> BankingAdapterBase:
